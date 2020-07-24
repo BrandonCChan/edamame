@@ -28,8 +28,8 @@ def run_model(filepath, save=False, model_name='model'):
     #---------------------------------------------------------------------------------------------------
     # File IO and parameter initialization
     #---------------------------------------------------------------------------------------------------
-    FILE_PATH = os.path.abspath(os.path.dirname(__file__))
-    input_file = pd.ExcelFile(FILE_PATH + "\\model_specifications\\" + filepath) # read in excel file
+    # FILE_PATH = os.path.abspath(os.path.dirname(__file__))
+    input_file = pd.ExcelFile(filepath) # read in excel file
     check_excel_file(input_file) # run checks on file formatting and specification of model
 
     # Read in each speadsheet in the file
