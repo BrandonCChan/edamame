@@ -39,7 +39,8 @@ The excel workbook contains 3 sheets:
                                       Additional params (ie. time) are provided at runtime.
                                       - parameter_1 denotes the *weibull shape parameter 'p'
                                       - parameter_2 denotes the regression constant 'c'
-                     beta and gamma | parameter_1 denotes mean, while paramter_2 denotes variance
+                     beta | parameter_1 denotes number of observed "sucesses", while paramter_2 denotes number of "non-sucesses"
+                     gamma | parameter_1 denotes mean, while parameter_2 denotes variance 
                      residual | paramter_1 and parameter_2 hold no meaning, the transition is inputed
                                 as the residual
                      constant | parameter_1 denotes a 'locked' transition probability
