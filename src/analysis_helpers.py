@@ -12,7 +12,14 @@ from markov_modeling import *
 from arch.bootstrap import IIDBootstrap # Bootstrap analysis
 
 def cea_analysis(base_filepath, treatment_filepath, save=False, analysis_name='', ce_threshold=20000):
-
+    '''
+    Function to run cost effectivness analysis. 
+    Inputs: base_filepath = filepath to specification of the base case / standard of care arm
+            treatment_filepath = filepath to the specification of the treatment arm
+    Optional Inputs: save = boolean (true/false) flag for saving model outputs. Default is False
+                     analysis_name = string to specify a descriptor to add to the filenames of saved outputs
+                     ce_threshold = integer to denote the willingness to pay threshold.
+    '''
     #---------------------------------------------------------------------------------------------------
     # Read in excel workbook and assign each sheet to a dataframe
     #---------------------------------------------------------------------------------------------------
