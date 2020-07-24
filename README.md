@@ -26,7 +26,7 @@ For model visualiztion:
 ## 1) Model specification
 Specification of model in excel file (examples in /model_specifications):
 The excel workbook contains 3 sheets: 
-1) transitions 
+#### 1) transitions 
     Rows: each row represents a distinct transition between states in the described model
           the properties of the transtion are denoted by the following columns
     Columns: start_state :: the origin state (ie. the A in an A->B transition)
@@ -39,24 +39,25 @@ The excel workbook contains 3 sheets:
                                       Additional params (ie. time) are provided at runtime.
                                       - parameter_1 denotes the *weibull shape parameter 'p'
                                       - parameter_2 denotes the regression constant 'c'
-                     beta and gamma | parameter_1 denotes mean, while paramter_2 denotes variance
+                     beta | parameter_1 denotes number of observed "sucesses", while paramter_2 denotes number of "non-sucesses"
+                     gamma | parameter_1 denotes mean, while parameter_2 denotes variance 
                      residual | paramter_1 and parameter_2 hold no meaning, the transition is inputed
                                 as the residual
                      constant | parameter_1 denotes a 'locked' transition probability
              
              parameter_1 :: meaning depends on the specified type (described above)
              parameter_2 :: meaning depends on the specified type (described above)
-2) costs 
+#### 2) costs 
     Rows: Each row represents the cost associated with each state
     Columns: state :: name of the state with associated cost
              cost :: cost of being in the corresponding state (assume pre-adjusted to some year)
              cost_variance :: variance of the cost
-3) utilities
+#### 3) utilities
     Rows: Each row represents the utility associated with each state
     Columns: state :: name of the state with associated cost
              utility :: cost of being in the corresponding state (assume pre-adjusted to some year)
              utility_variance :: variance of the cost
-4) specification
+#### 4) specification
     Rows: max_iterations :: number of iterations to run
           time_horizon :: maximum amount of time to model (in years)
           cycle_length :: "step size"/length of time of each cycle (days)
