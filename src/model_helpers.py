@@ -94,38 +94,80 @@ def get_beta(mean, variance):
     beta = (1-mean)*(mean/variance**2*(1-mean) - 1) #alpha * ((1/mean) - 1)
     return np.random.beta(alpha, beta)
 
-def get_time_dependant(p, const, time, cycle_length):
+def get_time_dependant(shape, scale, cycle, cycle_length):
     '''
     Obtains the transition probaility for a time-dependant transition by sampling the approximated function
     at the given time interval. 
-    Inputs: time = time in model, so i in 1:ncycle
-            cycle_length = cycle length, in days 
-            p = weibull shape parameter from regression. 
-            const = constant in regression
-    Output: A float between 0 and 1 denoting the time-dependant transition probability from A to B 
+    Inputs: shape = shape parameter of a weibull 
+            scale = scale parameter of a weibull
+            cycle = the current cycle of the model (ie. cycle i in 1:max_num_cycles)
+            cycle_length = the length of a cycle in days. 
+    Output: tdtp = A float between 0 and 1 denoting the time-dependant transition probability from A to B 
             based on the input parameters
+
+    Note* : Assumes weibull fitted to survival curve at a time scale of YEARS on x-axis.
+
+    Note** Ian's return function:
+    return 1-math.exp((math.exp(const))*(((time*cycle_length)-cycle_length)**p)-((math.exp(const))*((time*cycle_length)**p)))
     '''
     # TODO:// if other survival curves are being used implment separate return functions? (or add to main "switch")
-    return 1-math.exp((math.exp(const))*(((time*cycle_length)-cycle_length)**p)-((math.exp(const))*((time*cycle_length)**p)))
 
-def set_transition(transition_type, params):
+    # adjusts to yearly x-axis. subtract 1 from t1 as model "starts at time 1" however first transition calculation is based off of t0 and t1
+    t1 = ((cycle-1)*cycle_length) / 365
+    t2 = ((cycle)*cycle_length) / 365
+    
+    #return round(1-math.exp((t1/scale)**shape - (t2/scale)**shape), 15)
+    tdtp = 1-math.exp(scale*t1**shape - scale*t2**shape)
+
+    if tdtp > 1 or tdtp < 0:
+        raise ValueError('Transition sampled is greater than 1 or less than 0. Sampled value:',tp,'at cycle:',cycle)
+    
+    return tdtp
+
+def calculate_residual(matrix, state_index):
+    '''
+    Function that calculates the residual of all states in the matrix passed
+    Inputs: matrix = n x n numpy array representing the transition matrix of the model
+            state_index = an integer representing the row of the state that we wish to calculate the residual of
+    Output: residual of the outbound transitions
+    '''
+    row_sum = matrix[state_index, :].sum()
+    residual = 1 - row_sum
+    
+    # Error checking
+    if residual < 0:
+        raise ValueError('Error: residual is negative', round(residual,5))
+        
+    return residual
+
+def set_transition(transition_type, **kwargs):
     '''
     Function that serves as a switch for a number of transition-probability retriever functions
     Inputs: transition_type = string that denotes which function to redirect params to
-            params = a list of values that get passed to a secondary function and will dictate
-                     the output
+            kwargs = a number of keyword arguments provided to the function. Different transition types require different
+                     arguments. See code for details. Error is rasied when incorrect arguments are provided for a transition type.
     Output: transition probability sampled/assigned according to the transition_type input
     '''
-    #if transition_type == 'beta':
-    #    return get_beta(params[0], params[1])
     if transition_type == 'beta':
-        return np.random.beta(params[0], params[1])
+        if not all (parameter in kwargs for parameter in ('a','b')):
+            raise ValueError('Incorrect inputs specified for beta. Need a and b.')
+        return np.random.beta(kwargs['a'], kwargs['b'])
     elif transition_type == 'gamma':
-        return get_gamma(params[0], params[1]) 
-    elif transition_type == 'time-dependant':
-        return get_time_dependant(params[0], params[1], params[2], params[4])
+        if not all (parameter in kwargs for parameter in ('a','b')):
+            raise ValueError('Incorrect inputs specified for gamma. Need a and b.')
+        return get_gamma(kwargs['a'], kwargs['b']) 
+    elif transition_type == 'time_dependent':
+        if not all (parameter in kwargs for parameter in ('shape','scale','cycle','cycle_length')):
+            raise ValueError('Incorrect inputs specified for time dependent. Need shape, scale, cycle, and cycle_length.')
+        return get_time_dependant(kwargs['shape'],kwargs['scale'],kwargs['cycle'],kwargs['cycle_length'])
     elif transition_type == 'constant':
-        return params[0]
+        if 'transition' not in kwargs:
+            raise ValueError('Incorrect inputs specified for constant:', kwargs,'Only need 1: transition')
+        return kwargs['transition']
+    elif transition_type == 'residual':
+        if not all (parameter in kwargs for parameter in ('transition_matrix','update_index')):
+            raise ValueError('Incorrect inputs specified for residual calculation. Need transition_matrix and update_index')
+        return calculate_residual(kwargs['transition_matrix'], kwargs['update_index'])
     else:
         raise ValueError('Invalid transition type provided:',str(transition_type))
 
@@ -143,20 +185,7 @@ def check_row_sums(matrix):
         print(matrix)
         print(row_sums)
         raise ValueError('Error: transitions do no add to 1. Suggest using normalize_transitions()...')
-
-def calculate_residual(matrix, state_index):
-    '''
-    Function that calculates the residual of all states in the matrix passed
-    Inputs: matrix = n x n numpy array representing the transition matrix of the model
-            state_index = an integer representing the row of the state that we wish to calculate the residual of
-    Output: residual of the outbound transitions
-    '''
-    row_sum = matrix[state_index, :].sum(axis=1)
-    residual = 1 - row_sum
-    print(residual)
-    return residual
     
-
 def normalize_transitions(matrix):
     '''
     Function that rescales/normalizes the outbound transtions (row-wise) to have a sum of 1

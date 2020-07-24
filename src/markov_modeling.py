@@ -66,11 +66,14 @@ def run_model(filepath, save=False, model_name='model'):
 
     # Keep track of specific indicies in the transition matrix that need to be updated "in-simulation"
     # ie. time-dependant transitions and transitions that get resampled every iteration
-    # Intended to be stored as a list of dictionaries
+    # Intended to be stored as a list of dictionaries. Dictionaries contain key-value pairs that denote
+    # type of transtion, index (i,j) of matrix corresponding to transtion, and appropriate parameters ie. a, b, shape, scale, etc.
     resample_indicies = []
-    time_dependant_indicies = []
+    time_dependent_indicies = []
+    residual_indicies = []
 
-    # Iterate through specified transtions and initialize values of matrix 
+    # Iterate through specified transtions and initialize constant values of matrix. Transitions that vary (ie. time dependent or
+    # resampled) are assigned in model iteration step. 
     # Log indicies of transitions that need to be updated to quickly index the correct position in the transition matrix
     for t in transitions_df.itertuples():
         start_state_index = state_mapping[t[1]] # mapped row number of start state
@@ -78,22 +81,20 @@ def run_model(filepath, save=False, model_name='model'):
         t_type = t[3] # type of transition 
         params = t[4:] # parameters
         
-        if t_type in ['beta', 'gamma']:
-            resample_indicies += [{'start_state':t[1],'end_state':t[2],'i':start_state_index, 'j':end_state_index, 'type':t_type, 'params':params}]
-        elif t_type == 'time-dependant':
-            time_dependant_indicies += [{'start_state':t[1],'end_state':t[2],'i':start_state_index, 'j':end_state_index, 'type':t_type, 'params':params}]
+        if t_type == 'constant':
+            transition_matrix[start_state_index, end_state_index] = set_transition('constant', transition=params[0])
+        elif t_type in ['beta', 'gamma']:
+            resample_indicies += [{'start_state':t[1],'end_state':t[2],'i':start_state_index, 'j':end_state_index, 'type':t_type, 'a':params[0], 'b':params[1]}]
+        elif t_type == 'time_dependent':
+            time_dependent_indicies += [{'start_state':t[1],'end_state':t[2],'i':start_state_index, 'j':end_state_index, 'type':t_type, 'shape':params[0], 'scale':params[1]}]
         elif t_type == 'residual':
             residual_indicies += [{'start_state':t[1],'end_state':t[2],'i':start_state_index, 'j':end_state_index, 'type':t_type, 'params':params}]
-
-        # Initializes the transition matrix with values
-        # Optional? - no, we probally want to assign any static transitions here as they would otherwise not be set
-        transition_matrix[start_state_index, end_state_index] = set_transition(t_type,params)
-
-    # rescale row-wise to ensure row sums (ie. all transitions out of a state sum to 1)
-    transition_matrix = normalize_transitions(transition_matrix) 
+        else:
+            raise ValueError('Invalid transition type provided:',str(t_type),'Please double check excel file specification')
 
     #---------------------------------------------------------------------------------------------------
     # Run the simulation (for a single arm)
+    # TODO: could wrap this into a numba function for increace in speed
     #---------------------------------------------------------------------------------------------------
     # Create result logging array/dataframe 
     # Shape: [iteration_number x states x timesteps] where timesteps = number of cycles
@@ -109,11 +110,6 @@ def run_model(filepath, save=False, model_name='model'):
         # This corresponds with the row/name assignments of the transition matrix.
         population = np.zeros((num_states,1)) 
         population[state_mapping[name_start_state]] = 1 
-        '''
-        ^ FLAGGED FOR CLARIFICATION 
-        - Likely needs some work or initial specification from the excel file built-in
-        - TODO: add specification for model start state (ie. which state(s) do we assign the population to at t0?)
-        '''
         
         # Initialize with population at time 0 (ie. first cycle everyone is in tx_1 or whereever presumablly)
         results_log[iteration, :, 0] = population.reshape(num_states)
@@ -121,22 +117,31 @@ def run_model(filepath, save=False, model_name='model'):
         # Initialize as 1 at every iteration becasue population at 0 is always the same at the beginning of
         # any given iteration?
         cycle = 1
-        time = 0
+        # time = 0 # Unsused? TODO: Remove?
 
         # Resample transition probailities if needed (ie. from distributions) - Update matrix as appropriate
         for t in resample_indicies:
-            transition_matrix[t['i'],t['j']] = set_transition(t['type'],t['params'])  
-        transition_matrix = normalize_transitions(transition_matrix) # normalize sampling
-        check_row_sums(transition_matrix) # Check if row sums are == 1
+            transition_matrix[t['i'],t['j']] = set_transition(t['type'], a=t['a'], b=t['b'])  
+        
+        # Dont need to check properties outside of the iteration? - TODO:// Remove in future if deemed not needed
+        # transition_matrix = normalize_transitions(transition_matrix) # normalize sampling
+        # check_row_sums(transition_matrix) # Check if row sums are == 1
         
         #----------------------------------------------------------------------------------
         # For every timestep until max is reached
         while cycle < num_cycles:
             # Adjust time-dependant transition probabilities based on timestep if needed
-            for t in time_dependant_indicies:
-                transition_matrix[t['i'],t['j']] = set_transition(t['type'],t['params']+[time, cycle_length])
-            transition_matrix = normalize_transitions(transition_matrix) # Update matrix (certian i,j based on variable time)? - TODO this "targeted" functionality
-            check_row_sums(transition_matrix) # Check if row sums are == 1
+            for t in time_dependent_indicies:
+                transition_matrix[t['i'],t['j']] = set_transition(t['type'], shape=t['shape'], scale=t['scale'], cycle=cycle, cycle_length=cycle_length)
+            
+            # Calculate residual transition probailities if needed - Update matrix as appropriate
+            for t in residual_indicies:
+                transition_matrix[t['i'], t['j']] = 0 # AFTER RESAMPLING RESIDUAL IS RECALCULATED FROM ZERO (but only zero specific transition i to j)
+                transition_matrix[t['i'], t['j']] = calculate_residual(transition_matrix, t['i'])
+       
+            # Normalize to a valid matrix and perform sum check
+            transition_matrix = normalize_transitions(transition_matrix) 
+            check_row_sums(transition_matrix)
             
             # Initialize a temperary zero vector to log the updated population proportions
             new_population = np.zeros(population.shape)
@@ -162,16 +167,18 @@ def run_model(filepath, save=False, model_name='model'):
             # Update results_log after ever timestep
             results_log[iteration, :, cycle] = population.reshape(num_states) 
             
-            time += cycle_length # increment time based on cycle length
+            # time += cycle_length # increment time based on cycle length -- unused? TODO: Remove in future
             cycle += 1 # next cycle
 
         iteration_times[iteration] = [perf_counter() - start_iteration_time]
+
     print('model done...')
-    print('total time:',round(iteration_times.sum(),2),'seconds || mean time per iteration:', round(iteration_times.mean(),2),'seconds')      
+    print('total time:',round(iteration_times.sum(),2),'seconds || mean time per iteration:', round(iteration_times.mean(),2),'seconds') 
+
     #---------------------------------------------------------------------------------------------------
     # Costing and utility component
     #---------------------------------------------------------------------------------------------------
-    # TODO: implement condensable and substate calcualtions
+    # TODO: implement condensable and substate calcualtions in excel sheet
     condensable_state_mappings = {}
     multiple_toxicity_states = {}
 
@@ -218,7 +225,7 @@ def run_model(filepath, save=False, model_name='model'):
     if save:
         book = load_workbook(FILE_PATH + "\\model_specifications\\" + filepath)
         if 'state_mappings' not in book.sheetnames:
-        # TODO:// more powerful matching. ie. update instead of ignore if different
+        # TODO:// more powerful matching and logic. ie. update instead of ignore if different
             with pd.ExcelWriter(FILE_PATH + "\\model_specifications\\" + filepath, engine='openpyxl') as writer:
                 writer.book = book
                 state_mapping_df = pd.DataFrame.from_dict(state_mapping, orient='index')
