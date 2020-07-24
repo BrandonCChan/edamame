@@ -25,7 +25,7 @@ def check_excel_file(excel_book):
     transitions_df = pd.read_excel(excel_book, 'transitions')
     costs_df = pd.read_excel(excel_book, 'costs')
     utilities_df = pd.read_excel(excel_book, 'utilities')
-    specification_df = pd.read_excel(excel_book, 'specification', header=None, index_col=0) # TODO:// add specification checks
+    # specification_df = pd.read_excel(excel_book, 'specification', header=None, index_col=0) # TODO:// add specification checks
 
     # Specification of variables regarding states in model
     start_state_names = transitions_df['start_state'].unique().tolist()
@@ -120,7 +120,7 @@ def get_time_dependant(shape, scale, cycle, cycle_length):
     tdtp = 1-math.exp(scale*t1**shape - scale*t2**shape)
 
     if tdtp > 1 or tdtp < 0:
-        raise ValueError('Transition sampled is greater than 1 or less than 0. Sampled value:',tp,'at cycle:',cycle)
+        raise ValueError('Transition sampled is greater than 1 or less than 0. Sampled value:',round(tdtp,4),'at cycle:',cycle)
     
     return tdtp
 

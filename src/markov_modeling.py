@@ -223,10 +223,10 @@ def run_model(filepath, save=False, model_name='model'):
     # 3) utility
     #---------------------------------------------------------------------------------------------------
     if save:
-        book = load_workbook(FILE_PATH + "\\model_specifications\\" + filepath)
+        book = load_workbook(filepath)
         if 'state_mappings' not in book.sheetnames:
         # TODO:// more powerful matching and logic. ie. update instead of ignore if different
-            with pd.ExcelWriter(FILE_PATH + "\\model_specifications\\" + filepath, engine='openpyxl') as writer:
+            with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
                 writer.book = book
                 state_mapping_df = pd.DataFrame.from_dict(state_mapping, orient='index')
                 state_mapping_df.to_excel(writer, sheet_name='state_mappings')
