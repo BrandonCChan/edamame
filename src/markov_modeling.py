@@ -232,10 +232,10 @@ def run_model(filepath, save=False, model_name='model'):
                 state_mapping_df.to_excel(writer, sheet_name='state_mappings')
 
         name = model_name + '_' + strftime("%d-%m-%Y")
-        np.save('./model_outputs/'+name+'_population.npy', results_log)
-        np.save('./model_outputs/'+name+'_costs.npy', results_log_costs)
-        np.save('./model_outputs/'+name+'_utilities.npy', results_log_utilities)
-        print('results saved as: ./model_outputs/'+name+'... .npy')
+        np.save('../model_outputs/'+name+'_population.npy', results_log)
+        np.save('../model_outputs/'+name+'_costs.npy', results_log_costs)
+        np.save('../model_outputs/'+name+'_utilities.npy', results_log_utilities)
+        print('results saved: ../model_outputs/'+name+'... .npy')
     print('')
 
     return results_log, results_log_costs, results_log_utilities
