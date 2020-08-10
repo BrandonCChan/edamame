@@ -53,21 +53,30 @@ def cea_analysis(base_filepath, treatment_filepath, save=False, analysis_name=''
     c = cost_sum_per_iteration_treat - cost_sum_per_iteration_base
     u = utility_sum_per_iteration_treat - utility_sum_per_iteration_base
 
+    # Dataframe for ICER CI / Bootstrap Calculations
+    results_dataframe = pd.DataFrame({'cost_treat':cost_sum_per_iteration_treat,
+                                      'cost_base':cost_sum_per_iteration_base,
+                                      'utility_treat':utility_sum_per_iteration_treat,
+                                      'utility_base':utility_sum_per_iteration_base})
+
     delta_mean_utility = utility_sum_per_iteration_treat.mean() - utility_sum_per_iteration_base.mean() #Average util of treat - average util of basecase
     delta_mean_cost = cost_sum_per_iteration_treat.mean() - cost_sum_per_iteration_base.mean() #Average cost of treat - average cost of basecase
 
-    def func(x):
+    def function_icer(x):
         '''
         Function to return the ICER of the average of the boot strap sample.
-        Uses globally defined cost and utility arrays (c and u):
-            c and u are [1 x number_of_iterations] numpy arrays that represent 
-            the sum of a iterations costs and utility respectivley
-        x = indicies of interations to use from bootstrap function
+        Input: x = rows of results_dataframe that were indexed from the bootstrap sample
+                has 4 columns for cost_treat, cost_base, utility_treat, utility_base
+        Output: ICER calculated from the iterations present in x
+        
+                  mean(cost_treat) - mean(cost_base)
+        ICER = ----------------------------------------
+               mean(utility_treat) - mean(utility_base)
         '''
-        return c[x].mean()/u[x].mean()
+        return (x['cost_treat'].mean() - x['cost_base'].mean()) / (x['utility_treat'].mean() - x['utility_base'].mean())
 
-    bs = IIDBootstrap(np.array(list(range(0,c.shape[0])))) #use a "dummy" of array indicies to sample from. Needed to correctly calculate ICER of the average
-    ci = bs.conf_int(func, 1000, method='bca') #bias-corrected and accelerated method
+    bs = IIDBootstrap(results_dataframe) #use a "dummy" of array indicies to sample from. Needed to correctly calculate ICER of the average
+    ci = bs.conf_int(function_icer, 1000, method='bca') #bias-corrected and accelerated method
 
     print('ICER with 95% CI:')
     print(round(delta_mean_cost/delta_mean_utility,2),'(',round(ci[0][0],2),'to',round(ci[1][0],2),')')
