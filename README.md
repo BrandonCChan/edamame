@@ -50,11 +50,15 @@ The excel workbook contains 3 sheets:
 #### 2) costs 
     Rows: Each row represents the cost associated with each state
     Columns: state :: name of the state with associated cost
+             type :: method to apply costs. Options include 'static', 'beta' and 'gamma'.
+                     beta and gamma utilize the variance and cost (mean) to sample a cost for a given state and iteration
              cost :: cost of being in the corresponding state (assume pre-adjusted to some year)
              cost_variance :: variance of the cost
 #### 3) utilities
     Rows: Each row represents the utility associated with each state
     Columns: state :: name of the state with associated cost
+             type :: method to apply utilities. Options include 'static', 'beta' and 'gamma'.
+                     beta and gamma utilize the variance and cost (mean) to sample a utility for a given state and iteration
              utility :: cost of being in the corresponding state (assume pre-adjusted to some year)
              utility_variance :: variance of the cost
 #### 4) specification
