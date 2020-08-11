@@ -150,6 +150,7 @@ def run_model(filepath, save=False, model_name='model'):
             # Calculate the movement for the "population" in each state to another
             # ie. sum them up per state
             # population as a col vector basically 
+            # TODO: Just change this into a matrix multiplication operation with the @ operator...
             for i in range(0,population.shape[0]):
                 movements = transition_matrix[i,:] # isolate possible transitions for the specific state
                 
@@ -186,6 +187,38 @@ def run_model(filepath, save=False, model_name='model'):
     results_log_costs = np.zeros(results_log.shape)
     results_log_utilities = np.zeros(results_log.shape)
 
+    # For sampling costs/utilities per interation
+    # ie. generate a [num_states, num_iterations] shaped array 
+    iteration_costs = np.zeros((results_log.shape[0], results_log.shape[1]))
+    for t in costs_df.itertuples():
+        state_index = state_mapping[t[1]]
+        c_type = t[2]
+        if c_type == 'beta':
+            for i in range(0,iteration_costs.shape[0]):
+                iteration_costs[:,state_index] = get_beta(t[3], t[4])
+        elif c_type == 'gamma':
+            for i in range(0,iteration_costs.shape[0]):
+                iteration_costs[:,state_index] = get_gamma(t[3], t[4])
+        elif c_type == 'static':
+            iteration_costs[:,state_index] = t[3]
+        else:
+            raise ValueError('Error: Bad cost type specification', c_type)   
+            
+    iteration_utils = np.zeros((results_log.shape[0], results_log.shape[1]))
+    for t in utilities_df.itertuples():
+        state_index = state_mapping[t[1]]
+        u_type = t[2]
+        if u_type == 'beta':
+            for i in range(0,iteration_utils.shape[0]):
+                iteration_utils[i,state_index] = get_beta(t[3], t[4])
+        elif u_type == 'gamma':
+            for i in range(0,iteration_utils.shape[0]):
+                iteration_utils[i,state_index] = get_gamma(t[3], t[4])
+        elif u_type == 'static':
+            iteration_utils[:,state_index] = t[3]
+        else:
+            raise ValueError('Error: Bad cost type specification', c_type)   
+
     print('calculating costs and utilities...')
     for state in state_mapping:
         idx = state_mapping[state]
@@ -200,13 +233,13 @@ def run_model(filepath, save=False, model_name='model'):
             multiple_toxicity_states['state']
             results_log[:,idx,:] # is proportion of pts in that patient at every time iterations
             
-            results_log_costs[:,idx,:] = results_log[:,idx,:] * costs_df.loc[costs_df.state==state].cost.values[0] #cost_array[row,iteration]
-            results_log_utilities[:,idx,:] = results_log[:,idx,:] * utilities_df.loc[utilities_df.state==state].utility.values[0] #utility_array[row,iteration]
+            results_log_costs[:,idx,:] = results_log[:,idx,:] * iteration_costs[:,idx][:,np.newaxis] #costs_df.loc[costs_df.state==state].cost.values[0] #cost_array[row,iteration]
+            results_log_utilities[:,idx,:] = results_log[:,idx,:] * iteration_utils[:,idx][:,np.newaxis] #utilities_df.loc[utilities_df.state==state].utility.values[0] #utility_array[row,iteration]
         else:
             # multiply every (proportion) entry with the cost/utility associated with that state at that iteration
             # assign result to utility/cost array
-            results_log_costs[:,idx,:] = results_log[:,idx,:] * costs_df.loc[costs_df.state==state].cost.values[0] #cost_array[row,iteration]
-            results_log_utilities[:,idx,:] = results_log[:,idx,:] * utilities_df.loc[utilities_df.state==state].utility.values[0] #utility_array[row,iteration]
+            results_log_costs[:,idx,:] = results_log[:,idx,:] * iteration_costs[:,idx][:,np.newaxis] #costs_df.loc[costs_df.state==state].cost.values[0] #cost_array[row,iteration]
+            results_log_utilities[:,idx,:] = results_log[:,idx,:] * iteration_utils[:,idx][:,np.newaxis] #utilities_df.loc[utilities_df.state==state].utility.values[0] #utility_array[row,iteration]
     print('done costs and utilities...')
 
     # Apply discount rate
