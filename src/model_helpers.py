@@ -68,7 +68,7 @@ def get_gamma(mean, variance):
     Samples a value from the gamma distribution based on an input mean and variance
     Inputs: mean = mean
             variance = variance
-    Output: A float between 0 and 1 sampled from the beta distribution defined
+    Output: A float between 0 and 1 sampled from the gamma distribution defined
             by the input parameters
     '''
     # TODO: Error checking (look at wikipedia too) - consider moving out when checking the spreasheet. (all should be specified correctly before running)
@@ -94,15 +94,15 @@ def get_beta(mean, variance):
     beta = (1-mean)*(mean/variance**2*(1-mean) - 1) #alpha * ((1/mean) - 1)
     return np.random.beta(alpha, beta)
 
-def get_time_dependant(shape, scale, cycle, cycle_length):
+def get_time_dependent(shape, scale, cycle, cycle_length):
     '''
-    Obtains the transition probaility for a time-dependant transition by sampling the approximated function
+    Obtains the transition probability for a time-dependent transition by sampling the approximated function 
     at the given time interval. 
     Inputs: shape = shape parameter of a weibull 
             scale = scale parameter of a weibull
             cycle = the current cycle of the model (ie. cycle i in 1:max_num_cycles)
             cycle_length = the length of a cycle in days. 
-    Output: tdtp = A float between 0 and 1 denoting the time-dependant transition probability from A to B 
+    Output: tdtp = A float between 0 and 1 denoting the time-dependent transition probability from A to B 
             based on the input parameters
 
     Note* : Assumes weibull fitted to survival curve at a time scale of YEARS on x-axis.
@@ -145,7 +145,7 @@ def set_transition(transition_type, **kwargs):
     Function that serves as a switch for a number of transition-probability retriever functions
     Inputs: transition_type = string that denotes which function to redirect params to
             kwargs = a number of keyword arguments provided to the function. Different transition types require different
-                     arguments. See code for details. Error is rasied when incorrect arguments are provided for a transition type.
+                     arguments. See code for details. Error is raised when incorrect arguments are provided for a transition type.
     Output: transition probability sampled/assigned according to the transition_type input
     '''
     if transition_type == 'beta':
@@ -156,10 +156,10 @@ def set_transition(transition_type, **kwargs):
         if not all (parameter in kwargs for parameter in ('a','b')):
             raise ValueError('Incorrect inputs specified for gamma. Need a and b.')
         return get_gamma(kwargs['a'], kwargs['b']) 
-    elif transition_type == 'time_dependent':
+    elif transition_type == 'get_time_dependent':
         if not all (parameter in kwargs for parameter in ('shape','scale','cycle','cycle_length')):
             raise ValueError('Incorrect inputs specified for time dependent. Need shape, scale, cycle, and cycle_length.')
-        return get_time_dependant(kwargs['shape'],kwargs['scale'],kwargs['cycle'],kwargs['cycle_length'])
+        return get_time_dependent(kwargs['shape'],kwargs['scale'],kwargs['cycle'],kwargs['cycle_length'])
     elif transition_type == 'constant':
         if 'transition' not in kwargs:
             raise ValueError('Incorrect inputs specified for constant:', kwargs,'Only need 1: transition')
@@ -176,7 +176,7 @@ def set_transition(transition_type, **kwargs):
 #---------------------------------------------------------------------------------------------------
 def check_row_sums(matrix):
     '''
-    Function that serves soley as a check that all outbound probabilities sum to 1
+    Function that serves solely as a check that all outbound probabilities sum to 1
     Input: matrix = transition matrix of dimensions [num_states x num_states]
     Output: None. Will throw an error and terminate runtime if condition not met
     '''
@@ -200,7 +200,7 @@ def normalize_transitions(matrix):
 #---------------------------------------------------------------------------------------------------
 def check_model_population(pop):
     '''
-    Function to check that the entire popoulation is still in the model (ie. no disappearances)
+    Function to check that the entire population is still in the model (ie. no disappearances)
     Input: pop = [1 x number_of_states] numpy array 
     Output: None - raises error if does not sum to 1
     '''

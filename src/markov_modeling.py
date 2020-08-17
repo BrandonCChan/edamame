@@ -65,7 +65,7 @@ def run_model(filepath, save=False, model_name='model'):
     transition_matrix = np.zeros((num_states,num_states)) 
 
     # Keep track of specific indicies in the transition matrix that need to be updated "in-simulation"
-    # ie. time-dependant transitions and transitions that get resampled every iteration
+    # ie. time-dependent transitions and transitions that get resampled every iteration
     # Intended to be stored as a list of dictionaries. Dictionaries contain key-value pairs that denote
     # type of transtion, index (i,j) of matrix corresponding to transtion, and appropriate parameters ie. a, b, shape, scale, etc.
     resample_indicies = []
@@ -130,7 +130,7 @@ def run_model(filepath, save=False, model_name='model'):
         #----------------------------------------------------------------------------------
         # For every timestep until max is reached
         while cycle < num_cycles:
-            # Adjust time-dependant transition probabilities based on timestep if needed
+            # Adjust time-dependent transition probabilities based on timestep if needed
             for t in time_dependent_indicies:
                 transition_matrix[t['i'],t['j']] = set_transition(t['type'], shape=t['shape'], scale=t['scale'], cycle=cycle, cycle_length=cycle_length)
             
