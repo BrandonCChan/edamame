@@ -51,8 +51,9 @@ def run_model(filepath, save=False, model_name='model'):
     print('file and parameters loaded...')
 
     #---------------------------------------------------------------------------------------------------
-    # Generate matrix representation of model
-    #
+    # Generate matrix representation of model and identify/log state transitions that require resampling
+    # or additional calcuations when simulating
+    # 
     # Dimensions of matrix = [num_states x num_states]
     # Rows map to starting state, columns map to target state
     #---------------------------------------------------------------------------------------------------
@@ -155,7 +156,8 @@ def run_model(filepath, save=False, model_name='model'):
     #---------------------------------------------------------------------------------------------------
     # Costing and utility component
     #---------------------------------------------------------------------------------------------------
-    # TODO: implement substate calcualtions in excel sheet
+    # TODO: implement substate calcultions/identification/specification in excel sheet
+    # Empty dict intitalized to work with roughed in condition in downstream code
     multiple_toxicity_states = {}
 
     # Initialize results arrays
@@ -193,13 +195,15 @@ def run_model(filepath, save=False, model_name='model'):
         elif u_type == 'static':
             iteration_utils[:,state_index] = t[3]
         else:
-            raise ValueError('Error: Bad cost type specification', c_type)   
+            raise ValueError('Error: Bad utility type specification', u_type)   
 
     print('calculating costs and utilities...')
     for state in state_mapping:
         idx = state_mapping[state]
         
         # TODO: add "division" of treatment states for cost or utility? How to effectivley do this...
+        # The first if statement should never be triggered at the moment - just roughed in for future (assuming
+        # understanding of application is correct)
         if state in multiple_toxicity_states:
             multiple_toxicity_states['state']
             results_log[:,idx,:] # is proportion of pts in that patient at every time iterations
@@ -211,14 +215,18 @@ def run_model(filepath, save=False, model_name='model'):
             # assign result to utility/cost array
             results_log_costs[:,idx,:] = results_log[:,idx,:] * iteration_costs[:,idx][:,np.newaxis] #costs_df.loc[costs_df.state==state].cost.values[0] #cost_array[row,iteration]
             results_log_utilities[:,idx,:] = results_log[:,idx,:] * iteration_utils[:,idx][:,np.newaxis] #utilities_df.loc[utilities_df.state==state].utility.values[0] #utility_array[row,iteration]
-    print('done costs and utilities...')
-
+    
+    # Adjust utilities into per-year
+    results_log_utilities = results_log_utilities * (cycle_length/365)
+    
     # Apply discount rate
     # cost * (1 / ((1+discount_rate)**year))
     for i in range(0,results_log.shape[2]):
         year = math.floor((i*cycle_length)/365)
         results_log_costs[:,:,i] = results_log_costs[:,:,i] * (1 / ((1+discount_rate)**year))
         results_log_utilities[:,:,i] = results_log_utilities[:,:,i] * (1 / ((1+discount_rate)**year))
+
+    print('done costs and utilities...')
 
     #---------------------------------------------------------------------------------------------------
     # Save/return result components in a raw form (ie. as 3D arrays)

@@ -25,7 +25,7 @@ def check_excel_file(excel_book):
     transitions_df = pd.read_excel(excel_book, 'transitions')
     costs_df = pd.read_excel(excel_book, 'costs')
     utilities_df = pd.read_excel(excel_book, 'utilities')
-    # specification_df = pd.read_excel(excel_book, 'specification', header=None, index_col=0) # TODO:// add specification checks
+    specification_df = pd.read_excel(excel_book, 'specification', header=None, index_col=0) # TODO:// add specification checks
 
     # Specification of variables regarding states in model
     start_state_names = transitions_df['start_state'].unique().tolist()
@@ -53,6 +53,16 @@ def check_excel_file(excel_book):
     # Check for missing utilities
     if np.setdiff1d(unique_states, utilities_df['state'].tolist()).shape[0] > 0:
         raise ValueError('Missing utility value for state(s):',np.setdiff1d(unique_states, utilities_df['state'].tolist()),'please check utilities sheet in excel document')
+
+    # Check specification parameters
+    if int(specification_df.loc['max_iterations'].values[0]) < 1:
+        raise ValueError('Invalid number of model iterations. Needs to be greater than or equal to 1')
+    if specification_df.loc['cycle_length'].values[0] > specification_df.loc['time_horizon'].values[0] * 365:
+        raise ValueError('Invalid cycle length or time horizon. Cycle length must be smaller than horizon')
+    if specification_df.loc['name_start_state'].values[0] not in unique_states:
+        raise ValueError('Start state must be a valid defined state in "transitions" sheet. Please check. Invalid entry:',specification_df.loc['name_start_state'].values[0])
+    if specification_df.loc['discount_rate'].values[0] < 0 or specification_df.loc['discount_rate'].values[0] > 1:
+        raise ValueError('Invalid Discount Rate. Must be represented as a number between 0 and 1.')
 
 
 #---------------------------------------------------------------------------------------------------
