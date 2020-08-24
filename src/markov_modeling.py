@@ -83,8 +83,8 @@ def run_model(filepath, save=False, model_name='model'):
             transition_matrix[start_state_index, end_state_index] = set_transition('constant', transition=params[0])
         elif t_type in ['beta', 'gamma']:
             resample_indicies += [{'start_state':t[1],'end_state':t[2],'i':start_state_index, 'j':end_state_index, 'type':t_type, 'a':params[0], 'b':params[1]}]
-        elif t_type == 'time_dependent':
-            time_dependent_indicies += [{'start_state':t[1],'end_state':t[2],'i':start_state_index, 'j':end_state_index, 'type':t_type, 'shape':params[0], 'scale':params[1]}]
+        elif t_type == 'time_dependent_weibull' or t_type == 'time_dependent_gompertz':
+            time_dependent_indicies += [{'start_state':t[1],'end_state':t[2],'i':start_state_index, 'j':end_state_index, 'type':t_type, 'const':params[0], 'ancillary':params[1]}]
         elif t_type == 'residual':
             residual_indicies += [{'start_state':t[1],'end_state':t[2],'i':start_state_index, 'j':end_state_index, 'type':t_type, 'params':params}]
         else:
@@ -125,7 +125,7 @@ def run_model(filepath, save=False, model_name='model'):
         while cycle < num_cycles:
             # Adjust time-dependent transition probabilities based on timestep if needed
             for t in time_dependent_indicies:
-                transition_matrix[t['i'],t['j']] = set_transition(t['type'], shape=t['shape'], scale=t['scale'], cycle=cycle, cycle_length=cycle_length)
+                transition_matrix[t['i'],t['j']] = set_transition(t['type'], const=t['const'], ancillary=t['ancillary'], cycle=cycle, cycle_length=cycle_length)
             
             # Calculate residual transition probailities if needed - Update matrix as appropriate
             for t in residual_indicies:

@@ -104,30 +104,58 @@ def get_beta(mean, variance):
     beta = (1-mean)*(mean/variance**2*(1-mean) - 1) #alpha * ((1/mean) - 1)
     return np.random.beta(alpha, beta)
 
-def get_time_dependent(shape, scale, cycle, cycle_length):
+def get_time_dependent_weibull(const, p, cycle, cycle_length):
     '''
     Obtains the transition probability for a time-dependent transition by sampling the approximated function 
     at the given time interval. 
-    Inputs: shape = shape parameter of a weibull 
-            scale = scale parameter of a weibull
+    
+    Implementation of formula: tp(t_u) = 1 - S(t)/S(t-u) from "Decision Modelling for Health Economic Evaluation" by Briggs et.al
+    Based on survival functions outlined here: https://www.stata.com/manuals13/ststreg.pdf (Page 6.)
+    
+    Inputs: const = regression constant (as output from a PH fitted weibull in stata)
+            p = paramter p (as output from a PH fitted weibull in stata)
             cycle = the current cycle of the model (ie. cycle i in 1:max_num_cycles)
             cycle_length = the length of a cycle in days. 
     Output: tdtp = A float between 0 and 1 denoting the time-dependent transition probability from A to B 
             based on the input parameters
 
     Note* : Assumes weibull fitted to survival curve at a time scale of YEARS on x-axis.
-
-    Note** Ian's return function:
-    return 1-math.exp((math.exp(const))*(((time*cycle_length)-cycle_length)**p)-((math.exp(const))*((time*cycle_length)**p)))
     '''
-    # TODO:// if other survival curves are being used implment separate return functions? (or add to main "switch")
+    lmbda = math.exp(const)
 
     # adjusts to yearly x-axis. subtract 1 from t1 as model "starts at time 1" however first transition calculation is based off of t0 and t1
     t1 = ((cycle-1)*cycle_length) / 365
     t2 = ((cycle)*cycle_length) / 365
     
-    #return round(1-math.exp((t1/scale)**shape - (t2/scale)**shape), 15)
-    tdtp = 1-math.exp(scale*t1**shape - scale*t2**shape)
+    tdtp = 1 - ((math.exp(-lmbda*(t2**p))) / (math.exp(-lmbda*(t1**p))))
+
+    if tdtp > 1 or tdtp < 0:
+        raise ValueError('Transition sampled is greater than 1 or less than 0. Sampled value:',round(tdtp,4),'at cycle:',cycle)
+    
+    return tdtp
+
+def get_time_dependent_gompertz(const, gamma, cycle, cycle_length):
+    '''
+    Obtains the transition probability for a time dependent transition represented as a gompertz
+    
+    Implementation of formula: tp(t_u) = 1 - S(t)/S(t-u) from "Decision Modelling for Health Economic Evaluation" by Briggs et.al
+    Based on survival functions outlined here: https://www.stata.com/manuals13/ststreg.pdf (Page 6.)
+    
+    Inputs: const = the regression constant (as output from a PH fitted gompertz in stata)
+            gamma = parameter gamma (as output from a PH gompertz fitted in stata)
+            cycle = the current cycle of the model (ie. cycle i in 1:max_num_cycles)
+            cycle_length = the length of a cycle in days.
+    Output: tdtp = A float between 0 and 1 denoting the time-dependent transition probability from A to B 
+            based on the input parameters
+
+    Note** : Assumes gompertz fitted to survival curve at a time scale of YEARS on x-axis.
+    '''
+    lmbda = math.exp(const) #because lambda is a key term in python, lmbda is used to name the variable
+
+    t1 = ((cycle-1)*cycle_length) / 365
+    t2 = ((cycle)*cycle_length) / 365
+
+    tdtp = 1 - ((math.exp(-lmbda*gamma**-1*(math.exp(gamma*t2)-1))) / (math.exp(-lmbda*gamma**-1*(math.exp(gamma*t1)-1))))
 
     if tdtp > 1 or tdtp < 0:
         raise ValueError('Transition sampled is greater than 1 or less than 0. Sampled value:',round(tdtp,4),'at cycle:',cycle)
@@ -166,10 +194,14 @@ def set_transition(transition_type, **kwargs):
         if not all (parameter in kwargs for parameter in ('a','b')):
             raise ValueError('Incorrect inputs specified for gamma. Need a and b.')
         return get_gamma(kwargs['a'], kwargs['b']) 
-    elif transition_type == 'get_time_dependent':
-        if not all (parameter in kwargs for parameter in ('shape','scale','cycle','cycle_length')):
-            raise ValueError('Incorrect inputs specified for time dependent. Need shape, scale, cycle, and cycle_length.')
-        return get_time_dependent(kwargs['shape'],kwargs['scale'],kwargs['cycle'],kwargs['cycle_length'])
+    elif transition_type == 'time_dependent_weibull':
+        if not all (parameter in kwargs for parameter in ('const','ancillary','cycle','cycle_length')):
+            raise ValueError('Incorrect inputs specified for time dependent. Need const, p, cycle, and cycle_length.')
+        return get_time_dependent_weibull(kwargs['const'],kwargs['ancillary'],kwargs['cycle'],kwargs['cycle_length'])
+    elif transition_type == 'time_dependent_gompertz':
+        if not all (parameter in kwargs for parameter in ('const','ancillary','cycle','cycle_length')):
+            raise ValueError('Incorrect inputs specified for time dependent. Need const, gamma, cycle, and cycle_length.')
+        return get_time_dependent_gompertz(kwargs['const'],kwargs['ancillary'],kwargs['cycle'],kwargs['cycle_length'])
     elif transition_type == 'constant':
         if 'transition' not in kwargs:
             raise ValueError('Incorrect inputs specified for constant:', kwargs,'Only need 1: transition')

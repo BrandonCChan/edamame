@@ -33,12 +33,16 @@ The excel workbook contains 3 sheets:
              end_state :: the destination state (ie. the B in an A->B transition)
              type :: specifies the 'type' of transition. Used by the code to handle 
                      the following parameter values when drawing a transtion probability
-                     valid entries: time-dependant, beta, gamma, residual, constant
+                     valid entries: time_dependent_weibull, time_dependent_gompertz, beta, gamma, residual, constant
 
-                     time-dependant | Based on using a weibull distribution. 
-                                      Additional params (ie. time) are provided at runtime.
-                                      - parameter_1 denotes the *weibull shape parameter 'p'
-                                      - parameter_2 denotes the regression constant 'c'
+                     time_dependent_weibull | Based on using a weibull distribution. 
+                                              Additional params (ie. time) are provided at runtime.
+                                              - parameter_1 denotes the regression constant 'const'
+                                              - parameter_2 denotes the ancillary parameter 'p'
+                     time_dependent_gompertz | Based on using a gompertz distribution. 
+                                               Additional params (ie. time) are provided at runtime.
+                                               - parameter_1 denotes the regression constant 'const'
+                                               - parameter_2 denotes the ancillary parameter 'gamma'
                      beta | parameter_1 denotes number of observed "sucesses", while paramter_2 denotes number of "non-sucesses"
                      gamma | parameter_1 denotes mean, while parameter_2 denotes variance 
                      residual | paramter_1 and parameter_2 hold no meaning, the transition is inputed
