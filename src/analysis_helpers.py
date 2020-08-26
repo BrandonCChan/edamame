@@ -108,8 +108,9 @@ def apply_new_costs(population_array, discount_rate, cycle_length, state_mapping
     Output: results_cost = [num_iterations x num_states x num_cycles] representing the cost at each state, 
                            in each cycle, relative to the popoulation in a given state.
     '''
-    #  Checks: population_array.shape[1] == number of states in mapping
-    #          all state mappings exist in costs
+    #  Add Checks: population_array.shape[1] == number of states in mapping
+    #              all state mappings exist in costs
+
     results_costs = np.zeros(population_array.shape)
 
     iteration_costs = np.zeros((population_array.shape[0], population_array.shape[1]))
@@ -152,8 +153,8 @@ def apply_new_utilities(population_array, discount_rate, cycle_length, state_map
     Output: results_utilities = [num_iterations x num_states x num_cycles] representing the utility at each state, 
                                 in each cycle, relative to the popoulation in a given state.
     '''
-    # Checks: population_array.shape[1] == number of states in mapping 
-    #         all state mappings exist in utilities
+    # Add Checks: population_array.shape[1] == number of states in mapping 
+    #             all state mappings exist in utilities
     
     results_utilities = np.zeros(population_array.shape)
 
@@ -186,3 +187,26 @@ def apply_new_utilities(population_array, discount_rate, cycle_length, state_map
     results_utilities = results_utilities * (cycle_length/365)
     
     return results_utilities
+
+
+def get_state_mappings(excel_filename):
+    '''
+    Function to obtain the state mapping dictionary from an excel file.
+    If model results were saved, a sheet called "state_mappings" should have been saved to the 
+    specification file. If it exists, it is used as the mapping. Otherwise, the mappings are
+    regenerated from the transitions sheet in the specification file.
+    Input: excel_filename = string denoting the filepath of the specification excel doc
+    Output: state_mapping = a dictionary of the names of each state mapped to their respective 
+            numeric index
+    '''
+    excel_book = pd.ExcelFile(excel_filename)
+    if 'state_mappings' in excel_book.sheet_names:
+        state_mapping = pd.read_excel(excel_book, 'state_mappings')
+        return state_mapping.set_index('Unnamed: 0')[0].to_dict()
+    elif 'transitons' in excel_book.sheet_names:
+        transitions_df = pd.read_excel(excel_book, 'transitions')
+        unique_states = transitions_df['start_state'].unique().tolist()
+        state_mapping = {i : unique_states.index(i) for i in unique_states}
+        return state_mapping
+    else:
+        raise ValueError('Error: transitions or state mappings not defined in excel sheet')
