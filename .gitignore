@@ -1,4 +1,7 @@
 model_outputs/chl_test_28-07-2020_utilities.npy
 *.xlsx
 *.pyc
+*.svg
+*.png
+*.npy
 notebooks/.ipynb_checkpoints/

@@ -114,6 +114,7 @@ def apply_new_costs(population_array, discount_rate, cycle_length, state_mapping
     results_costs = np.zeros(population_array.shape)
 
     iteration_costs = np.zeros((population_array.shape[0], population_array.shape[1]))
+    copy_costs = {}
     for t in costs.itertuples():
         state_index = state_mapping[t[1]]
         c_type = t[2]
@@ -125,8 +126,17 @@ def apply_new_costs(population_array, discount_rate, cycle_length, state_mapping
                 iteration_costs[:,state_index] = get_gamma(t[3], t[4])
         elif c_type == 'static':
             iteration_costs[:,state_index] = t[3]
+        elif c_type == 'copy':
+            copy_costs[state_index] = [state_mapping[t[3]]] # cost for index (noted as copy) points to index of target
+            iteration_costs[state_index] = np.nan # initialize as nan
         else:
             raise ValueError('Error: Bad cost type specification', c_type)
+
+    # Fill copied costs
+    for c in copy_costs:
+        iteration_costs[c] = iteration_costs[copy_costs[c]]
+    if np.isnan(iteration_costs).any(): #TODO: Could make this output something more detailed. I.e. index of error cost
+        raise ValueError('Error: NaN cost specified. Likely a copy type error. Please check costs sheet')
 
     for state in state_mapping:
         idx = state_mapping[state]  
@@ -159,6 +169,7 @@ def apply_new_utilities(population_array, discount_rate, cycle_length, state_map
     results_utilities = np.zeros(population_array.shape)
 
     iteration_utils = np.zeros((population_array.shape[0], population_array.shape[1]))
+    copy_utils = {}
     for t in utilities.itertuples():
         state_index = state_mapping[t[1]]
         u_type = t[2]
@@ -170,9 +181,18 @@ def apply_new_utilities(population_array, discount_rate, cycle_length, state_map
                 iteration_utils[i,state_index] = get_gamma(t[3], t[4])
         elif u_type == 'static':
             iteration_utils[:,state_index] = t[3]
+        elif u_type == 'copy':
+            copy_utils[state_index] = [state_mapping[t[3]]] # cost for index (noted as copy) points to index of target
+            iteration_utils[state_index] = np.nan # initialize as nan
         else:
             raise ValueError('Error: Bad utility type specification', u_type)
     
+    # Fill copied utilities
+    for u in copy_utils:
+        iteration_utils[u] = iteration_utils[copy_utils[u]]
+    if np.isnan(iteration_utils).any(): #TODO: Could make this output something more detailed. I.e. index of error utility
+        raise ValueError('Error: NaN utility specified. Likely a copy type error. Please check utility sheet')
+
     for state in state_mapping:
         idx = state_mapping[state]
         results_utilities[:,idx,:] = population_array[:,idx,:] * iteration_utils[:,idx][:,np.newaxis]

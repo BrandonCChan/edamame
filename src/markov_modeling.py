@@ -153,6 +153,21 @@ def run_model(filepath, save=False, model_name='model'):
     print('model done...')
     print('total time:',round(iteration_times.sum(),2),'seconds || mean time per iteration:', round(iteration_times.mean(),2),'seconds') 
 
+    # Save model output if flagged to do so. Moved up to gaurd against cost/util failure 
+    if save:
+        name = model_name + '_' + strftime("%d-%m-%Y")
+        np.save('../model_outputs/'+name+'_population.npy', results_log)
+        print('model output saved: ../model_outputs/'+name+'... .npy')
+
+        # Save state mappings in a separate worksheet
+        book = load_workbook(filepath)
+        if 'state_mappings' not in book.sheetnames:
+        # TODO:// add more powerful matching and logic. ie. update instead of ignore if different
+            with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+                writer.book = book
+                state_mapping_df = pd.DataFrame.from_dict(state_mapping, orient='index')
+                state_mapping_df.to_excel(writer, sheet_name='state_mappings')
+
     #---------------------------------------------------------------------------------------------------
     # Costing and utility component
     #---------------------------------------------------------------------------------------------------
@@ -168,6 +183,7 @@ def run_model(filepath, save=False, model_name='model'):
     # ie. generate a [num_states, num_iterations] shaped array 
     # TODO: move these or at least add checks for these in the check_file function
     iteration_costs = np.zeros((results_log.shape[0], results_log.shape[1]))
+    copy_costs = {}
     for t in costs_df.itertuples():
         state_index = state_mapping[t[1]]
         c_type = t[2]
@@ -179,10 +195,20 @@ def run_model(filepath, save=False, model_name='model'):
                 iteration_costs[:,state_index] = get_gamma(t[3], t[4])
         elif c_type == 'static':
             iteration_costs[:,state_index] = t[3]
+        elif c_type == 'copy':
+            copy_costs[state_index] = [state_mapping[t[3]]] # cost for index (noted as copy) points to index of target
+            iteration_costs[state_index] = np.nan # initialize as nan
         else:
-            raise ValueError('Error: Bad cost type specification', c_type)   
-            
+            raise ValueError('Error: Bad cost type specification', c_type)
+
+    # Fill copied costs
+    for c in copy_costs:
+        iteration_costs[c] = iteration_costs[copy_costs[c]]
+    if np.isnan(iteration_costs).any(): #TODO: Could make this output something more detailed. I.e. index of error cost
+        raise ValueError('Error: NaN cost specified. Likely a copy type error. Please check costs sheet')
+    
     iteration_utils = np.zeros((results_log.shape[0], results_log.shape[1]))
+    copy_utils = {}
     for t in utilities_df.itertuples():
         state_index = state_mapping[t[1]]
         u_type = t[2]
@@ -194,8 +220,17 @@ def run_model(filepath, save=False, model_name='model'):
                 iteration_utils[i,state_index] = get_gamma(t[3], t[4])
         elif u_type == 'static':
             iteration_utils[:,state_index] = t[3]
+        elif u_type == 'copy':
+            copy_utils[state_index] = [state_mapping[t[3]]] # cost for index (noted as copy) points to index of target
+            iteration_utils[state_index] = np.nan # initialize as nan
         else:
-            raise ValueError('Error: Bad utility type specification', u_type)   
+            raise ValueError('Error: Bad utility type specification', u_type)
+    
+    # Fill copied utilities
+    for u in copy_utils:
+        iteration_utils[u] = iteration_utils[copy_utils[u]]
+    if np.isnan(iteration_utils).any(): #TODO: Could make this output something more detailed. I.e. index of error utility
+        raise ValueError('Error: NaN utility specified. Likely a copy type error. Please check utility sheet')
 
     print('calculating costs and utilities...')
     for state in state_mapping:
@@ -235,19 +270,10 @@ def run_model(filepath, save=False, model_name='model'):
     # 3) utility
     #---------------------------------------------------------------------------------------------------
     if save:
-        book = load_workbook(filepath)
-        if 'state_mappings' not in book.sheetnames:
-        # TODO:// add more powerful matching and logic. ie. update instead of ignore if different
-            with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
-                writer.book = book
-                state_mapping_df = pd.DataFrame.from_dict(state_mapping, orient='index')
-                state_mapping_df.to_excel(writer, sheet_name='state_mappings')
-
         name = model_name + '_' + strftime("%d-%m-%Y")
-        np.save('../model_outputs/'+name+'_population.npy', results_log)
         np.save('../model_outputs/'+name+'_costs.npy', results_log_costs)
         np.save('../model_outputs/'+name+'_utilities.npy', results_log_utilities)
-        print('results saved: ../model_outputs/'+name+'... .npy')
+        print('Cost and utility results saved: ../model_outputs/'+name+'... .npy')
     print('')
 
     return results_log, results_log_costs, results_log_utilities
