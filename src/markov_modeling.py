@@ -2,7 +2,7 @@
 # Code for running a monte carlo markov using a model structure and parameters specified in an excel
 # document. (See README and test_parameters.xlsx for addional explaination and example)
 #
-# Brandon Chan | July 2020
+# Brandon Chan | January 2021
 #---------------------------------------------------------------------------------------------------
 # Import packages/libraries
 #---------------------------------------------------------------------------------------------------
@@ -10,45 +10,104 @@ import pandas as pd # Dataframe structure and manipulation
 import numpy as np # Scientific computing functionality (array and matrix operations and some stats things)
 import math # For additional math functions
 from time import perf_counter, strftime # For timing the runtime of the code
-from openpyxl import load_workbook # Helps interface with excel document for read/writing
-from model_helpers import * # Importing all the functions outlined in model_helpers.py
+from arch.bootstrap import IIDBootstrap # Bootstrap analysis for ICER CI calculation
+# Importing required functions outlined in model_helpers.py
+from model_helpers import check_excel_file, get_gamma, get_beta, calculate_residual, set_transition, check_row_sums, normalize_transitions, check_model_population 
 
-def run_model(filepath, save=False, model_name='model'):
+class ModelSpec:
     '''
-    Function that reads a specified excel sheet and runs the model specified by it
-    Input: filepath = path of excel doc that defines model
-    Optional inputs: save = boolean (True/False) flag to automatically save the model outputs in the
-                            model_outputs/ directory. Default is Flase
-                     model_name = Used when save is equal to True. Specifies a string to be used to
-                                  as a in-filename descriptor for the saved model outputs. Default is "model" 
-    Output: returns 3 npy arrays of the population, cost, and utility over each model iteration, 
-            state, and cycle.
+    A container to load in an excel sheet specification of a model and store parameters. 
+    Performs a check on the validitiy of the specified model via the check_excel_file() function.
+    Is used as an input for various functions of the analysis framework so that relevant model
+    information is used. Also allows for in-code changes to model parameters if desired.
+
+    Initialization args: filepath = full filepath to an excel sheet specification of a model arm
+                         model_name = string that denotes the name of the model
+
+    TODO:// add model specification checks when in-code modifications are made to parameters 
     '''
+    def __init__(self, filepath, model_name):
+        self.model_name = model_name
+        self.excel_file = filepath
+
+        input_file = pd.ExcelFile(filepath) # read in excel file
+        check_excel_file(input_file)
+
+        self.structure = pd.read_excel(input_file, 'transitions') 
+        self.cost_specs = pd.read_excel(input_file, 'costs')
+        self.util_specs = pd.read_excel(input_file, 'utilities')
+        self.simulation_parameters = pd.read_excel(input_file, 'specification', header=None, index_col=0)
+
+        # Specification of variables regarding states in model
+        unique_states = self.structure['start_state'].unique().tolist()
+        self.state_mapping = {i : unique_states.index(i) for i in unique_states}
+        self.num_states = len(unique_states)
+
+        # Initialize model parameters based on spreadsheet defined values
+        self.max_iterations = int(self.simulation_parameters.loc['max_iterations'].values[0])
+        self.cycle_length = self.simulation_parameters.loc['cycle_length'].values[0]
+        self.time_horizon_days = self.simulation_parameters.loc['time_horizon'].values[0] * 365
+        self.num_cycles = int(self.time_horizon_days / self.cycle_length) + 1 # Check this?
+        self.name_start_state = self.simulation_parameters.loc['name_start_state'].values[0]
+        self.discount_rate = self.simulation_parameters.loc['discount_rate'].values[0]
+
+    # TODO:// Consider adding mode functions like saving, etc.
+
+
+class ModelData:
+    '''
+    A container to store the population, cost, and utility outputs for a single arm of a model.
+    Is used as an input for convenience functions to calculate metrics of interest.
+
+    On initialization, requires 3 numpy arrays (population, cost, and utility) outputs to be passed in
+    
+    Args: pdata = numpy array of shape [iteration_number x states x timesteps] representing the state to state movement in the model
+          cdata = numpy array of shape [iteration_number x states x timesteps] representing the cost per state per cycle 
+          udata = numpy array of shape [iteration_number x states x timesteps] representing the utility per state per cycle
+    '''
+    def __init__(self, pdata, cdata, udata):
+        # Checks that all data have same dims
+        for i in range(0, 3):
+            if pdata.shape[i] != cdata.shape[i] or pdata.shape[i] != udata.shape[i] or cdata.shape[i] != udata.shape[i]:
+                raise ValueError('Error: Dimensions of all 3 input arrays must be the same')
+
+        self.pop_data = pdata
+        self.cost_data = cdata
+        self.util_data = udata
+
+        self.num_states = pdata.shape[0]
+        self.num_cycles = pdata.shape[1]
+        self.num_iterations = pdata.shape[2]
+
+        # Auto-consense data to per-state and per-iteration
+        self.cycle_cost_data = np.sum(self.cost_data, axis=1)
+        self.cycle_util_data = np.sum(self.util_data, axis=1)
+
+        self.iteration_cost_data = np.sum(self.cycle_cost_data, axis=1)
+        self.iteration_util_data = np.sum(self.cycle_util_data, axis=1)        
+
+
+def run_model(model_specification: ModelSpec):
+    '''
+    Function that takes a loaded model specification and runs the model based on the stored parameters
+
+    Input: model_specification = a ModelSpec object with a loaded model specification
+    Output: results_log = a 3D numpy array of the dimensions [iteration_number x states x timesteps] where timesteps = number of cycles
+                          this represnets the "movement" throughout the model states at each cycle for each iteration.
+    '''
+    if isinstance(model_specification, ModelSpec) == False:
+        raise TypeError('Error: Expected input model_specification to be of type markov_modeling.ModelSpec')
+    
     #---------------------------------------------------------------------------------------------------
-    # File IO and parameter initialization
+    # Parameter initialization
     #---------------------------------------------------------------------------------------------------
-    input_file = pd.ExcelFile(filepath) # read in excel file
-    check_excel_file(input_file) # run checks on file formatting and specification of model
-
-    # Read in each relevant speadsheet in the file
-    transitions_df = pd.read_excel(input_file, 'transitions')
-    costs_df = pd.read_excel(input_file, 'costs')
-    utilities_df = pd.read_excel(input_file, 'utilities')
-    specification_df = pd.read_excel(input_file, 'specification', header=None, index_col=0)
-
-    # Specification of variables regarding states in model
-    unique_states = transitions_df['start_state'].unique().tolist()
-    num_states = len(unique_states)
-
-    # Initialize model parameters based on spreadsheet defined values
-    max_iterations = int(specification_df.loc['max_iterations'].values[0])
-    cycle_length = specification_df.loc['cycle_length'].values[0]
-    time_horizon_days = specification_df.loc['time_horizon'].values[0] * 365
-    num_cycles = int(time_horizon_days / cycle_length)
-    name_start_state = specification_df.loc['name_start_state'].values[0]
-    discount_rate = specification_df.loc['discount_rate'].values[0]
-
-    print('file and parameters loaded...')
+    transitions_df = model_specification.structure
+    num_states = model_specification.num_states
+    max_iterations = model_specification.max_iterations
+    cycle_length = model_specification.cycle_length
+    num_cycles = model_specification.num_cycles
+    name_start_state = model_specification.name_start_state
+    state_mapping = model_specification.state_mapping
 
     #---------------------------------------------------------------------------------------------------
     # Generate matrix representation of model and identify/log state transitions that require resampling
@@ -57,10 +116,8 @@ def run_model(filepath, save=False, model_name='model'):
     # Dimensions of matrix = [num_states x num_states]
     # Rows map to starting state, columns map to target state
     #---------------------------------------------------------------------------------------------------
-    # Use dict to map from names to numeric index in array 
-    state_mapping = {i : unique_states.index(i) for i in unique_states}
-    #specify empty transition matrix
-    transition_matrix = np.zeros((num_states,num_states)) 
+    # specify empty transition matrix
+    transition_matrix = np.zeros((num_states, num_states)) 
 
     # Keep track of specific indicies in the transition matrix that need to be updated "in-simulation"
     # ie. time-dependent transitions and transitions that get resampled/recalculated every iteration
@@ -68,6 +125,7 @@ def run_model(filepath, save=False, model_name='model'):
     # type of transtion, index (i,j) of matrix corresponding to transtion, and appropriate parameters ie. a, b, shape, scale, etc.
     resample_indicies = []
     time_dependent_indicies = []
+    probabilistic_time_dependent_indicies = []
     residual_indicies = []
 
     # Iterate through specified transtions and initialize constant values of matrix. Transitions that vary 
@@ -82,11 +140,27 @@ def run_model(filepath, save=False, model_name='model'):
         if t_type == 'constant':
             transition_matrix[start_state_index, end_state_index] = set_transition('constant', transition=params[0])
         elif t_type in ['beta', 'gamma']:
-            resample_indicies += [{'start_state':t[1],'end_state':t[2],'i':start_state_index, 'j':end_state_index, 'type':t_type, 'a':params[0], 'b':params[1]}]
-        elif t_type == 'time_dependent_weibull' or t_type == 'time_dependent_gompertz':
-            time_dependent_indicies += [{'start_state':t[1],'end_state':t[2],'i':start_state_index, 'j':end_state_index, 'type':t_type, 'const':params[0], 'ancillary':params[1]}]
+            resample_indicies += [{'start_state':t[1], 'end_state':t[2], 
+                                   'i':start_state_index, 'j':end_state_index, 
+                                   'type':t_type, 
+                                   'a':params[0], 'b':params[1]}]
+        elif t_type in ['time_dependent_weibull', 'time_dependent_gompertz']:
+            time_dependent_indicies += [{'start_state':t[1], 'end_state':t[2], 
+                                         'i':start_state_index, 'j':end_state_index, 
+                                         'type':t_type, 
+                                         'const':params[0], 'ancillary':params[1]}]
+        elif t_type in ['probabilistic_time_dependent_weibull', 'probabilistic_time_dependent_gompertz']:
+            # Is treated the same as a time-dependent weibull or gompertz, hence why the type in the dictionary is adjusted to chop off the "probabilistic" part
+            probabilistic_time_dependent_indicies += [{'start_state':t[1],'end_state':t[2],
+                                                       'i':start_state_index, 'j':end_state_index,
+                                                       'type':t_type[14:], 
+                                                       'const':params[0], 'ancillary':params[1],
+                                                       'se_const':params[2], 'se_ancillary':params[3],
+                                                       'sampled_const':params[0], 'sampled_ancillary':params[1]}]
         elif t_type == 'residual':
-            residual_indicies += [{'start_state':t[1],'end_state':t[2],'i':start_state_index, 'j':end_state_index, 'type':t_type, 'params':params}]
+            residual_indicies += [{'start_state':t[1], 'end_state':t[2], 
+                                   'i':start_state_index, 'j':end_state_index, 
+                                   'type':t_type, 'params':params}]
         else:
             raise ValueError('Invalid transition type provided:',str(t_type),'Please double check excel file specification')
 
@@ -99,15 +173,15 @@ def run_model(filepath, save=False, model_name='model'):
     results_log = np.zeros((max_iterations, num_states, num_cycles))
 
     print('beginning iterations...')
-    iteration_times = np.zeros((max_iterations,1))
-    for iteration in range(0,max_iterations):
+    iteration_times = np.zeros((max_iterations, 1))
+    for iteration in range(0, max_iterations):
         start_iteration_time = perf_counter() # begin timer for logging run time of model iteration
 
         # Initialize the starting population/proportion for each state at beginning of each model iteration
         # I.e. starting with a zero column-vector of dimension [number_of_states x 1]
         # The initial "proportions" are assigned in accordance to the corresponding row of the vector
         # This corresponds with the row/name assignments of the transition matrix.
-        population = np.zeros((num_states,1)) 
+        population = np.zeros((num_states, 1)) 
         population[state_mapping[name_start_state]] = 1 
         
         # Initialize with population at time 0 (ie. first cycle everyone is in tx_1 or whereever presumablly)
@@ -119,14 +193,25 @@ def run_model(filepath, save=False, model_name='model'):
 
         # Resample transition probailities if needed (ie. from distributions) - Update matrix as appropriate
         for t in resample_indicies:
-            transition_matrix[t['i'],t['j']] = set_transition(t['type'], a=t['a'], b=t['b'])  
+            transition_matrix[t['i'], t['j']] = set_transition(t['type'], a=t['a'], b=t['b'])  
         
+        # Resample time-dependent transition probabilities if needed (ie. from distributions)
+        # First point of modification if we wish to handle per-interation probabilistic estimates
+        for t in probabilistic_time_dependent_indicies:
+            t['sampled_const'] = np.random.normal(t['const'], t['se_const'])
+            t['sampled_ancillary'] = np.random.normal(t['ancillary'], t['se_ancillary']) 
+
         # For every timestep until max is reached
         while cycle < num_cycles:
             # Adjust time-dependent transition probabilities based on timestep if needed
             for t in time_dependent_indicies:
-                transition_matrix[t['i'],t['j']] = set_transition(t['type'], const=t['const'], ancillary=t['ancillary'], cycle=cycle, cycle_length=cycle_length)
+                transition_matrix[t['i'], t['j']] = set_transition(t['type'], const=t['const'], ancillary=t['ancillary'], cycle=cycle, cycle_length=cycle_length)
             
+            # Adjust proabilistic time-dependent transition probabilities based on timestep if needed (Triggers the same set_transition "pathway" 
+            # as a non-probabilistic time-dependent, but passes the sampled parameters instead)
+            for t in probabilistic_time_dependent_indicies:
+                transition_matrix[t['i'], t['j']] = set_transition(t['type'], const=t['sampled_const'], ancillary=t['sampled_ancillary'], cycle=cycle, cycle_length=cycle_length)
+
             # Calculate residual transition probailities if needed - Update matrix as appropriate
             for t in residual_indicies:
                 transition_matrix[t['i'], t['j']] = 0 # AFTER RESAMPLING RESIDUAL IS RECALCULATED FROM ZERO (but only zero specific transition i to j)
@@ -151,40 +236,37 @@ def run_model(filepath, save=False, model_name='model'):
         iteration_times[iteration] = [perf_counter() - start_iteration_time] # log time required to run interation
 
     print('model done...')
-    print('total time:',round(iteration_times.sum(),2),'seconds || mean time per iteration:', round(iteration_times.mean(),2),'seconds') 
+    print('total time:',round(iteration_times.sum(), 2),'seconds || mean time per iteration:', round(iteration_times.mean(), 2),'seconds') 
 
-    # Save model output if flagged to do so. Moved up to gaurd against cost/util failure 
-    if save:
-        name = model_name + '_' + strftime("%d-%m-%Y")
-        np.save('../model_outputs/'+name+'_population.npy', results_log)
-        print('model output saved: ../model_outputs/'+name+'... .npy')
+    return results_log
 
-        # Save state mappings in a separate worksheet
-        book = load_workbook(filepath)
-        if 'state_mappings' not in book.sheetnames:
-        # TODO:// add more powerful matching and logic. ie. update instead of ignore if different
-            with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
-                writer.book = book
-                state_mapping_df = pd.DataFrame.from_dict(state_mapping, orient='index')
-                state_mapping_df.to_excel(writer, sheet_name='state_mappings')
 
-    #---------------------------------------------------------------------------------------------------
-    # Costing and utility component
-    #---------------------------------------------------------------------------------------------------
-    # TODO: implement substate calcultions/identification/specification in excel sheet
-    # Empty dict intitalized to work with roughed in condition in downstream code
-    multiple_toxicity_states = {}
+def calculate_costs(population_array, model_specification: ModelSpec):
+    '''
+    Function to apply costs to an existing population array. Requires a number of details regarding the
+    original model to properly apply.
 
-    # Initialize results arrays
-    results_log_costs = np.zeros(results_log.shape)
-    results_log_utilities = np.zeros(results_log.shape)
+    Inputs: population_array = [num_iterations x num_states x num_cycles] shaped numpy array representing
+                               model output with respect to population movement
+            model_specification = instance of the ModelSpec object with a loaded specification
+    Output: results_cost = [num_iterations x num_states x num_cycles] representing the cost at each state, 
+                           in each cycle, relative to the popoulation in a given state.
+    '''
+    if isinstance(model_specification, ModelSpec) == False:
+        raise TypeError('Error: Expected input model_specification to be of type markov_modeling.ModelSpec')
+    if len(model_specification.state_mapping) != population_array.shape[1]:
+        raise ValueError('Number of states represented in population array (', population_array.shape[1], ') does not match the number of states in specification (', len(model_specification.state_mapping), ')')
 
-    # For sampling costs/utilities per interation
-    # ie. generate a [num_states, num_iterations] shaped array 
-    # TODO: move these or at least add checks for these in the check_file function
-    iteration_costs = np.zeros((results_log.shape[0], results_log.shape[1]))
+    discount_rate = model_specification.discount_rate
+    cycle_length = model_specification.cycle_length
+    state_mapping = model_specification.state_mapping
+    costs = model_specification.cost_specs
+
+    results_costs = np.zeros(population_array.shape)
+
+    iteration_costs = np.zeros((population_array.shape[0], population_array.shape[1]))
     copy_costs = {}
-    for t in costs_df.itertuples():
+    for t in costs.itertuples():
         state_index = state_mapping[t[1]]
         c_type = t[2]
         if c_type == 'beta':
@@ -206,10 +288,46 @@ def run_model(filepath, save=False, model_name='model'):
         iteration_costs[c] = iteration_costs[copy_costs[c]]
     if np.isnan(iteration_costs).any(): #TODO: Could make this output something more detailed. I.e. index of error cost
         raise ValueError('Error: NaN cost specified. Likely a copy type error. Please check costs sheet')
-    
-    iteration_utils = np.zeros((results_log.shape[0], results_log.shape[1]))
+
+    for state in state_mapping:
+        idx = state_mapping[state]  
+        results_costs[:,idx,:] = population_array[:,idx,:] * iteration_costs[:,idx][:,np.newaxis]
+            
+    # Apply discount rate
+    # cost * (1 / ((1+discount_rate)**year))
+    for i in range(0,results_costs.shape[2]):
+        year = math.floor((i*cycle_length)/365)
+        results_costs[:,:,i] = results_costs[:,:,i] * (1 / ((1+discount_rate)**year))
+
+    return results_costs
+
+
+def calculate_utilities(population_array, model_specification: ModelSpec):
+    '''
+    Function to apply utilities to an existing population array. Requires a number of details regarding the
+    original model to properly apply.
+
+    Inputs: population_array = [num_iterations x num_states x num_cycles] shaped numpy array representing
+                               model output with respect to population movement
+            model_specification = instance of the ModelSpec object with a loaded specification
+    Output: results_utilities = [num_iterations x num_states x num_cycles] representing the utility at each state, 
+                                in each cycle, relative to the popoulation in a given state.
+    '''
+    if isinstance(model_specification, ModelSpec) == False:
+        raise TypeError('Error: Expected input model_specification to be of type markov_modeling.ModelSpec')
+    if len(model_specification.state_mapping) != population_array.shape[1]:
+        raise ValueError('Number of states represented in population array (', population_array.shape[1], ') does not match the number of states in specification (', len(model_specification.state_mapping), ')')
+
+    discount_rate = model_specification.discount_rate
+    cycle_length = model_specification.cycle_length
+    state_mapping = model_specification.state_mapping
+    utilities = model_specification.util_specs
+
+    results_utilities = np.zeros(population_array.shape)
+
+    iteration_utils = np.zeros((population_array.shape[0], population_array.shape[1]))
     copy_utils = {}
-    for t in utilities_df.itertuples():
+    for t in utilities.itertuples():
         state_index = state_mapping[t[1]]
         u_type = t[2]
         if u_type == 'beta':
@@ -232,48 +350,65 @@ def run_model(filepath, save=False, model_name='model'):
     if np.isnan(iteration_utils).any(): #TODO: Could make this output something more detailed. I.e. index of error utility
         raise ValueError('Error: NaN utility specified. Likely a copy type error. Please check utility sheet')
 
-    print('calculating costs and utilities...')
     for state in state_mapping:
         idx = state_mapping[state]
-        
-        # TODO: add "division" of treatment states for cost or utility? How to effectivley do this...
-        # The first if statement should never be triggered at the moment - just roughed in for future (assuming
-        # understanding of application is correct)
-        if state in multiple_toxicity_states:
-            multiple_toxicity_states['state']
-            results_log[:,idx,:] # is proportion of pts in that patient at every time iterations
-            
-            results_log_costs[:,idx,:] = results_log[:,idx,:] * iteration_costs[:,idx][:,np.newaxis] #costs_df.loc[costs_df.state==state].cost.values[0] #cost_array[row,iteration]
-            results_log_utilities[:,idx,:] = results_log[:,idx,:] * iteration_utils[:,idx][:,np.newaxis] #utilities_df.loc[utilities_df.state==state].utility.values[0] #utility_array[row,iteration]
-        else:
-            # multiply every (proportion) entry with the cost/utility associated with that state at that iteration
-            # assign result to utility/cost array
-            results_log_costs[:,idx,:] = results_log[:,idx,:] * iteration_costs[:,idx][:,np.newaxis] #costs_df.loc[costs_df.state==state].cost.values[0] #cost_array[row,iteration]
-            results_log_utilities[:,idx,:] = results_log[:,idx,:] * iteration_utils[:,idx][:,np.newaxis] #utilities_df.loc[utilities_df.state==state].utility.values[0] #utility_array[row,iteration]
-    
-    # Adjust utilities into per-year
-    results_log_utilities = results_log_utilities * (cycle_length/365)
-    
+        results_utilities[:,idx,:] = population_array[:,idx,:] * iteration_utils[:,idx][:,np.newaxis]
+
     # Apply discount rate
     # cost * (1 / ((1+discount_rate)**year))
-    for i in range(0,results_log.shape[2]):
+    for i in range(0,results_utilities.shape[2]):
         year = math.floor((i*cycle_length)/365)
-        results_log_costs[:,:,i] = results_log_costs[:,:,i] * (1 / ((1+discount_rate)**year))
-        results_log_utilities[:,:,i] = results_log_utilities[:,:,i] * (1 / ((1+discount_rate)**year))
+        results_utilities[:,:,i] = results_utilities[:,:,i] * (1 / ((1+discount_rate)**year))
 
-    print('done costs and utilities...')
+    # Adjust utilities to per-year
+    results_utilities = results_utilities * (cycle_length/365)
+    
+    return results_utilities
 
-    #---------------------------------------------------------------------------------------------------
-    # Save/return result components in a raw form (ie. as 3D arrays)
-    # 1) population
-    # 2) costs
-    # 3) utility
-    #---------------------------------------------------------------------------------------------------
-    if save:
-        name = model_name + '_' + strftime("%d-%m-%Y")
-        np.save('../model_outputs/'+name+'_costs.npy', results_log_costs)
-        np.save('../model_outputs/'+name+'_utilities.npy', results_log_utilities)
-        print('Cost and utility results saved: ../model_outputs/'+name+'... .npy')
-    print('')
 
-    return results_log, results_log_costs, results_log_utilities
+def calculate_icer(base: ModelData, treat: ModelData, calculate_ci=False):
+    '''
+    Convenience function to calculate an ICER and optional CI using bias-corrected and accelerated
+    method. 
+
+    Inputs: base = ModelData object containing the data outputs (population, costs, utils) from the base case arm
+            treat = ModelData object containing the data outputs from the treatment (comparator) arm
+
+    Outputs: ICER = the calculated ICER
+                CI = the calculated CI of the ICER using the bias-corrected and accelerated bootstrap implmentation
+                    in the ARCH package. (This is only returned when calculate_ci is set to True)
+    '''
+    if isinstance(base, ModelData) == False or isinstance(treat, ModelData) == False:
+        raise TypeError('Error: Expected inputs base and treat to be of type markov_modeling.ModelData')
+
+    # Calculate delta utility and delta cost between the iterations of the treatment and base case arms
+    delta_mean_utility = treat.iteration_util_data.mean() - base.iteration_util_data.mean() #Average util of treat - average util of basecase
+    delta_mean_cost = treat.iteration_cost_data.mean() - base.iteration_cost_data.mean() #Average cost of treat - average cost of basecase
+
+    ICER = delta_mean_cost/delta_mean_utility
+
+    if calculate_ci == True:
+        results_data = pd.DataFrame({'cost_treat': treat.iteration_cost_data,
+                                    'cost_base': base.iteration_cost_data,
+                                    'utility_treat': treat.iteration_util_data,
+                                    'utility_base': base.iteration_util_data})
+
+        def func_icer(x):
+            '''
+            Function to return the ICER of the average of the boot strap sample.
+            Input: x = rows of results_dataframe that were indexed from the bootstrap sample
+                    has 4 columns for cost_treat, cost_base, utility_treat, utility_base
+            Output: ICER calculated from the iterations present in x
+            
+                    mean(cost_treat) - mean(cost_base)
+            ICER = ----------------------------------------
+                mean(utility_treat) - mean(utility_base)
+            '''
+            return (x['cost_treat'].mean() - x['cost_base'].mean()) / (x['utility_treat'].mean() - x['utility_base'].mean())
+
+        bs = IIDBootstrap(results_data) #use a "dummy" of array indicies to sample from. Needed to correctly calculate ICER of the average
+        ci = bs.conf_int(func_icer, 1000, method='bca') #bias-corrected and accelerated method
+
+        return ICER, ci
+
+    return ICER

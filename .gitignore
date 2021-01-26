@@ -5,3 +5,4 @@ model_outputs/chl_test_28-07-2020_utilities.npy
 *.png
 *.npy
 notebooks/.ipynb_checkpoints/
+src/.ipynb_checkpoints/model_helpers-checkpoint.py
