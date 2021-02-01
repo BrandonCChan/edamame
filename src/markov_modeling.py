@@ -47,7 +47,7 @@ class ModelSpec:
         self.max_iterations = int(self.simulation_parameters.loc['max_iterations'].values[0])
         self.cycle_length = self.simulation_parameters.loc['cycle_length'].values[0]
         self.time_horizon_days = self.simulation_parameters.loc['time_horizon'].values[0] * 365
-        self.num_cycles = int(self.time_horizon_days / self.cycle_length) + 1 # Check this?
+        self.num_cycles = int(self.time_horizon_days / self.cycle_length)
         self.name_start_state = self.simulation_parameters.loc['name_start_state'].values[0]
         self.discount_rate = self.simulation_parameters.loc['discount_rate'].values[0]
 
@@ -151,6 +151,7 @@ def run_model(model_specification: ModelSpec):
                                          'const':params[0], 'ancillary':params[1]}]
         elif t_type in ['probabilistic_time_dependent_weibull', 'probabilistic_time_dependent_gompertz']:
             # Is treated the same as a time-dependent weibull or gompertz, hence why the type in the dictionary is adjusted to chop off the "probabilistic" part
+            # sampled const and ancillary are default the listed "mean" const and ancillary
             probabilistic_time_dependent_indicies += [{'start_state':t[1],'end_state':t[2],
                                                        'i':start_state_index, 'j':end_state_index,
                                                        'type':t_type[14:], 

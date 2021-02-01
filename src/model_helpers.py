@@ -11,11 +11,6 @@ import math
 #---------------------------------------------------------------------------------------------------
 # File IO
 #---------------------------------------------------------------------------------------------------
-def read_file(filepath):
-    model_specification_file = pd.ExcelFile(filepath)
-    check_excel_file(model_specification_file) # Run checks
-    return model_specification_file
-
 def check_excel_file(excel_book):
     '''
     Excel file Q/A - checking for specification errors
@@ -80,12 +75,17 @@ def get_gamma(mean, variance):
             variance = variance
     Output: A float between 0 and 1 sampled from the gamma distribution defined
             by the input parameters
+
+    See: https://wiki.analytica.com/index.php?title=Gamma_distribution#:~:text=To%20estimate%20the%20parameters%20of,)%2FMean(X%2C%20I)&text=alpha%20%3A%3D%204%2FSkewness(X%2C%20I)%5E2
+         https://www.itl.nist.gov/div898/handbook/eda/section3/eda366b.htm
     '''
     # TODO: Error checking (look at wikipedia too) - consider moving out when checking the spreasheet. (all should be specified correctly before running)
-    # mean-var > 1?
-    # Actually used for sampling utility or cost?
-    alpha = (mean**2)/(variance**2)  
-    beta = (variance**2)/mean
+    # Currently based on criteria from David's old code
+    if variance < mean or mean < 10 or variance < 1.1:
+        raise ValueError('Invalid mean and/or variance parameters for gamma prameter estimation')
+    
+    alpha = (mean**2)/variance  
+    beta = variance/mean
     return np.random.gamma(alpha, beta)
 
 def get_beta(mean, variance):
@@ -95,13 +95,16 @@ def get_beta(mean, variance):
             variance = variance
     Output: A float between 0 and 1 sampled from the beta distribution defined
             by the input parameters
+
+    See: https://en.wikipedia.org/wiki/Beta_distribution#Mean_and_sample_size
     '''
-    # TODO: Error checking (look at wikipedia too) - consider moving out when checking the spreasheet. (all should be specified correctly before runnin
+    # TODO: Error checking (look at wikipedia too) - consider moving out when checking the spreasheet. (all should be specified correctly before running)
     # if mean - close to 1 and 0 may return errors
-    # if variance is > mean - maybe issues
-    # Actually used for sampling utility or cost?
-    alpha = mean*((mean*(1-mean)/variance**2) - 1) #(((1-mean)/variance) - (1/mean)) * mean**2  
-    beta = (1-mean)*(mean/variance**2*(1-mean) - 1) #alpha * ((1/mean) - 1)
+    if variance > mean*(1-mean):
+        raise ValueError('Variance is too large to estimate parameters alpha and beta')
+    
+    alpha = mean*(((mean*(1-mean))/variance) - 1)  
+    beta = (1-mean)*(((mean*(1-mean))/variance) - 1)
     return np.random.beta(alpha, beta)
 
 def get_time_dependent_weibull(const, p, cycle, cycle_length):
@@ -150,11 +153,12 @@ def get_time_dependent_gompertz(const, gamma, cycle, cycle_length):
 
     Note** : Assumes gompertz fitted to survival curve at a time scale of YEARS on x-axis.
     '''
-    lmbda = math.exp(const) #because lambda is a key term in python, lmbda is used to name the variable
+    lmbda = math.exp(const) 
 
     t1 = ((cycle-1)*cycle_length) / 365
     t2 = ((cycle)*cycle_length) / 365
 
+    # adjusts to yearly x-axis. subtract 1 from t1 as model "starts at time 1" however first transition calculation is based off of t0 and t1
     tdtp = 1 - ((math.exp(-lmbda*gamma**-1*(math.exp(gamma*t2)-1))) / (math.exp(-lmbda*gamma**-1*(math.exp(gamma*t1)-1))))
 
     if tdtp > 1 or tdtp < 0:
