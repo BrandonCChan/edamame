@@ -81,7 +81,7 @@ def get_gamma(mean, variance):
     '''
     # TODO: Error checking (look at wikipedia too) - consider moving out when checking the spreasheet. (all should be specified correctly before running)
     # Currently based on criteria from David's old code
-    if variance < mean or mean < 10 or variance < 1.1:
+    if variance > mean or mean < 10 or variance < 1.1:
         raise ValueError('Invalid mean and/or variance parameters for gamma prameter estimation')
     
     alpha = (mean**2)/variance  
