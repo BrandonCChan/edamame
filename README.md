@@ -2,30 +2,11 @@
 For decision analytic modeling and cost-effectiveness analysis
 
 ## Requirements (tested with):
-Core:
-* python 3.7
-* numpy 1.18.5
-* pandas 0.25.3
-* openpyxl 3.0.1 
-* arch 4.15 
-* matplotlib 3.1.3 
-* seaborn 0.9.0
-
-For model results tracing:
-* plotly 4.7.1
-* chart-studio 1.1.0
-
-For model visualiztion:
-* dash 1.12.0 
-* dash-cytoscape 0.1.1
-* jupyter-dash 0.2.1.post1 
-* networkx 2.4
-
-* jupyter 1.0.0 (for running notebooks)
+See requirements.txt
 
 ## 1) Model specification
-Specification of model in excel file (examples in /model_specifications):
-The excel workbook contains 3 sheets: 
+Specification of model in an excel file (examples in /model_specifications):
+The excel workbook contains 4 sheets: 
 #### 1) transitions 
     Rows: each row represents a distinct transition between states in the described model
           the properties of the transtion are denoted by the following columns
@@ -33,7 +14,9 @@ The excel workbook contains 3 sheets:
              end_state :: the destination state (ie. the B in an A->B transition)
              type :: specifies the 'type' of transition. Used by the code to handle 
                      the following parameter values when drawing a transtion probability
-                     valid entries: time_dependent_weibull, time_dependent_gompertz, beta, gamma, residual, constant
+                     valid entries: time_dependent_weibull, time_dependent_gompertz, 
+                                    probabilistic_time_dependent_weibull, probabilistic_time_dependent_gompertz,
+                                    beta, gamma, residual, constant
 
                      time_dependent_weibull | Based on using a weibull distribution. 
                                               Additional params (ie. time) are provided at runtime.
@@ -43,14 +26,29 @@ The excel workbook contains 3 sheets:
                                                Additional params (ie. time) are provided at runtime.
                                                - parameter_1 denotes the regression constant 'const'
                                                - parameter_2 denotes the ancillary parameter 'gamma'
+                     probabilistic_time_dependent_weibull | Based on using a weibull distribution. 
+                                                            Additional params (ie. time) are provided at runtime.
+                                                            - parameter_1 denotes the regression constant 'const'
+                                                            - parameter_2 denotes the ancillary parameter 'p'
+                                                            - parameter_3 denotes the standard error of 'const'
+                                                            - parameter_4 denotes the standard error of 'p'
+                     probabilistic_time_dependent_gompertz | Based on using a gompertz distribution.
+                                                             Additional params (ie. time) are provided at runtime.
+                                                             - parameter_1 denotes the regression constant 'const'
+                                                             - parameter_2 denotes the ancillary parameter 'p'
+                                                             - parameter_3 denotes the standard error of 'const'
+                                                             - parameter_4 denotes the standard error of 'p'
                      beta | parameter_1 denotes number of observed "sucesses", while paramter_2 denotes number of "non-sucesses"
                      gamma | parameter_1 denotes mean, while parameter_2 denotes variance 
                      residual | paramter_1 and parameter_2 hold no meaning, the transition is inputed
                                 as the residual
                      constant | parameter_1 denotes a 'locked' transition probability
-             
+                     
              parameter_1 :: meaning depends on the specified type (described above)
              parameter_2 :: meaning depends on the specified type (described above)
+             parameter_3 :: meaning depends on the specified type (described above)
+             parameter_4 :: meaning depends on the specified type (described above)
+             notes :: space for additional descriptions you may want to add           
 #### 2) costs 
     Rows: Each row represents the cost associated with each state
     Columns: state :: name of the state with associated cost
@@ -58,6 +56,7 @@ The excel workbook contains 3 sheets:
                      beta and gamma utilize the variance and cost (mean) to sample a cost for a given state and iteration
              cost :: cost of being in the corresponding state (assume pre-adjusted to some year)
              cost_variance :: variance of the cost
+             notes :: space for additional descriptions you may want to add
 #### 3) utilities
     Rows: Each row represents the utility associated with each state
     Columns: state :: name of the state with associated cost
@@ -65,6 +64,7 @@ The excel workbook contains 3 sheets:
                      beta and gamma utilize the variance and cost (mean) to sample a utility for a given state and iteration
              utility :: cost of being in the corresponding state (assume pre-adjusted to some year)
              utility_variance :: variance of the cost
+             notes :: space for additional descriptions you may want to add
 #### 4) specification
     Rows: max_iterations :: number of iterations to run
           time_horizon :: maximum amount of time to model (in years)
