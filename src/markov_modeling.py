@@ -66,8 +66,8 @@ class ModelData:
           udata = numpy array of shape [iteration_number x states x timesteps] representing the utility per state per cycle
     '''
     def __init__(self, pdata, cdata, udata):
-        # Checks that all data have same dims
-        for i in range(0, 3):
+        # Checks that all data have same dims (in two dimensions...)
+        for i in range(0, 2):
             if pdata.shape[i] != cdata.shape[i] or pdata.shape[i] != udata.shape[i] or cdata.shape[i] != udata.shape[i]:
                 raise ValueError('Error: Dimensions of all 3 input arrays must be the same')
 
@@ -242,7 +242,7 @@ def run_model(model_specification: ModelSpec):
     return results_log
 
 
-def calculate_costs(population_array, model_specification: ModelSpec):
+def calculate_costs(population_array, model_specification: ModelSpec, mode='uncorrected'):
     '''
     Function to apply costs to an existing population array. Requires a number of details regarding the
     original model to properly apply.
@@ -250,8 +250,12 @@ def calculate_costs(population_array, model_specification: ModelSpec):
     Inputs: population_array = [num_iterations x num_states x num_cycles] shaped numpy array representing
                                model output with respect to population movement
             model_specification = instance of the ModelSpec object with a loaded specification
+            mode = the method in which to calculate the utility output. default is uncorrected. 
+                   "trapezoid" can be specified to use the trapezoid method for half-cycle corrections
     Output: results_cost = [num_iterations x num_states x num_cycles] representing the cost at each state, 
                            in each cycle, relative to the popoulation in a given state.
+            *Note: if mode='trapezoid' the output result_cost will have a shape of [num_iterations x num_states x num_cycles-1]
+                   this is because of the way it is calculated.
     '''
     if isinstance(model_specification, ModelSpec) == False:
         raise TypeError('Error: Expected input model_specification to be of type markov_modeling.ModelSpec')
@@ -262,8 +266,6 @@ def calculate_costs(population_array, model_specification: ModelSpec):
     cycle_length = model_specification.cycle_length
     state_mapping = model_specification.state_mapping
     costs = model_specification.cost_specs
-
-    results_costs = np.zeros(population_array.shape)
 
     iteration_costs = np.zeros((population_array.shape[0], population_array.shape[1]))
     copy_costs = {}
@@ -290,20 +292,41 @@ def calculate_costs(population_array, model_specification: ModelSpec):
     if np.isnan(iteration_costs).any(): #TODO: Could make this output something more detailed. I.e. index of error cost
         raise ValueError('Error: NaN cost specified. Likely a copy type error. Please check costs sheet')
 
-    for state in state_mapping:
-        idx = state_mapping[state]  
-        results_costs[:,idx,:] = population_array[:,idx,:] * iteration_costs[:,idx][:,np.newaxis]
-            
-    # Apply discount rate
-    # cost * (1 / ((1+discount_rate)**year))
-    for i in range(0,results_costs.shape[2]):
-        year = math.floor((i*cycle_length)/365)
-        results_costs[:,:,i] = results_costs[:,:,i] * (1 / ((1+discount_rate)**year))
+    # Apply sampled costs to population array
+    if mode == 'trapezoid':
+        # Calculate state membership via the trapezoid method
+        population_array_trap = (population_array + np.roll(population_array, -1)) / 2
+        population_array_trap = population_array_trap[:, :, :-1]
 
-    return results_costs
+        results_costs = np.zeros(population_array_trap.shape)
+        for state in state_mapping:
+            idx = state_mapping[state]  
+            results_costs[:,idx,:] = population_array_trap[:,idx,:] * iteration_costs[:,idx][:,np.newaxis]
+
+        # Apply discount rate with an extra half-cycle tacked on (is the half cycle needed?)
+        # cost * (1 / ((1+discount_rate)**year))
+        for i in range(0,results_costs.shape[2]):
+            year = math.floor(((i*cycle_length)+(cycle_length/2))/365)
+            results_costs[:,:,i] = results_costs[:,:,i] * (1 / ((1+discount_rate)**year))
+
+        return results_costs
+    else:
+        results_costs = np.zeros(population_array.shape)
+
+        for state in state_mapping:
+            idx = state_mapping[state]  
+            results_costs[:,idx,:] = population_array[:,idx,:] * iteration_costs[:,idx][:,np.newaxis]
+                
+        # Apply discount rate
+        # cost * (1 / ((1+discount_rate)**year))
+        for i in range(0,results_costs.shape[2]):
+            year = math.floor((i*cycle_length)/365)
+            results_costs[:,:,i] = results_costs[:,:,i] * (1 / ((1+discount_rate)**year))
+
+        return results_costs
 
 
-def calculate_utilities(population_array, model_specification: ModelSpec):
+def calculate_utilities(population_array, model_specification: ModelSpec, mode='uncorrected'):
     '''
     Function to apply utilities to an existing population array. Requires a number of details regarding the
     original model to properly apply.
@@ -311,8 +334,12 @@ def calculate_utilities(population_array, model_specification: ModelSpec):
     Inputs: population_array = [num_iterations x num_states x num_cycles] shaped numpy array representing
                                model output with respect to population movement
             model_specification = instance of the ModelSpec object with a loaded specification
+            mode = the method in which to calculate the utility output. default is uncorrected.
+                   "trapezoid" can be specified to use the trapezoid method for half-cycle corrections
     Output: results_utilities = [num_iterations x num_states x num_cycles] representing the utility at each state, 
                                 in each cycle, relative to the popoulation in a given state.
+            *Note: if mode='trapezoid' the output result_cost will have a shape of [num_iterations x num_states x num_cycles-1]
+                   this is because of the way it is calculated.
     '''
     if isinstance(model_specification, ModelSpec) == False:
         raise TypeError('Error: Expected input model_specification to be of type markov_modeling.ModelSpec')
@@ -323,8 +350,6 @@ def calculate_utilities(population_array, model_specification: ModelSpec):
     cycle_length = model_specification.cycle_length
     state_mapping = model_specification.state_mapping
     utilities = model_specification.util_specs
-
-    results_utilities = np.zeros(population_array.shape)
 
     iteration_utils = np.zeros((population_array.shape[0], population_array.shape[1]))
     copy_utils = {}
@@ -351,20 +376,44 @@ def calculate_utilities(population_array, model_specification: ModelSpec):
     if np.isnan(iteration_utils).any(): #TODO: Could make this output something more detailed. I.e. index of error utility
         raise ValueError('Error: NaN utility specified. Likely a copy type error. Please check utility sheet')
 
-    for state in state_mapping:
-        idx = state_mapping[state]
-        results_utilities[:,idx,:] = population_array[:,idx,:] * iteration_utils[:,idx][:,np.newaxis]
+    # Apply sampled utilities to population array.
+    if mode == 'trapezoid':
+        # Calculate state membership via the trapezoid method
+        population_array_trap = (population_array + np.roll(population_array, -1)) / 2
+        population_array_trap = population_array_trap[:, :, :-1]
 
-    # Apply discount rate
-    # cost * (1 / ((1+discount_rate)**year))
-    for i in range(0,results_utilities.shape[2]):
-        year = math.floor((i*cycle_length)/365)
-        results_utilities[:,:,i] = results_utilities[:,:,i] * (1 / ((1+discount_rate)**year))
+        results_utilities = np.zeros(population_array_trap.shape)
+        for state in state_mapping:
+            idx = state_mapping[state]
+            results_utilities[:,idx,:] = population_array_trap[:,idx,:] * iteration_utils[:,idx][:,np.newaxis]
 
-    # Adjust utilities to per-year
-    results_utilities = results_utilities * (cycle_length/365)
-    
-    return results_utilities
+        # Apply discount rate with an extra half-cycle tacked on (is the half cycle needed?)
+        # cost * (1 / ((1+discount_rate)**year))
+        for i in range(0,results_utilities.shape[2]):
+            year = math.floor(((i*cycle_length)+(cycle_length/2))/365)
+            results_utilities[:,:,i] = results_utilities[:,:,i] * (1 / ((1+discount_rate)**year))
+
+        # Adjust utilities to per-year
+        results_utilities = results_utilities * (cycle_length/365)
+        
+        return results_utilities
+    else:
+        results_utilities = np.zeros(population_array.shape)
+
+        for state in state_mapping:
+            idx = state_mapping[state]
+            results_utilities[:,idx,:] = population_array[:,idx,:] * iteration_utils[:,idx][:,np.newaxis]
+
+        # Apply discount rate
+        # cost * (1 / ((1+discount_rate)**year))
+        for i in range(0,results_utilities.shape[2]):
+            year = math.floor((i*cycle_length)/365)
+            results_utilities[:,:,i] = results_utilities[:,:,i] * (1 / ((1+discount_rate)**year))
+
+        # Adjust utilities to per-year
+        results_utilities = results_utilities * (cycle_length/365)
+        
+        return results_utilities
 
 
 def calculate_icer(base: ModelData, treat: ModelData, calculate_ci=False):
