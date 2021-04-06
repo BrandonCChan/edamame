@@ -124,6 +124,7 @@ def run_model(model_specification: ModelSpec):
     # Intended to be stored as a list of dictionaries. Dictionaries contain key-value pairs that denote
     # type of transtion, index (i,j) of matrix corresponding to transtion, and appropriate parameters ie. a, b, shape, scale, etc.
     resample_indicies = []
+    resample_r2p_indicies = []
     time_dependent_indicies = []
     probabilistic_time_dependent_indicies = []
     residual_indicies = []
@@ -144,6 +145,11 @@ def run_model(model_specification: ModelSpec):
                                    'i':start_state_index, 'j':end_state_index, 
                                    'type':t_type, 
                                    'a':params[0], 'b':params[1]}]
+        elif t_type in ['beta_r2p']:
+            resample_r2p_indicies += [{'start_state':t[1], 'end_state':t[2], 
+                                       'i':start_state_index, 'j':end_state_index, 
+                                       'type':t_type, 
+                                       'a':params[0], 'b':params[1], 't':params[2]}]
         elif t_type in ['time_dependent_weibull', 'time_dependent_gompertz']:
             time_dependent_indicies += [{'start_state':t[1], 'end_state':t[2], 
                                          'i':start_state_index, 'j':end_state_index, 
@@ -194,13 +200,35 @@ def run_model(model_specification: ModelSpec):
 
         # Resample transition probailities if needed (ie. from distributions) - Update matrix as appropriate
         for t in resample_indicies:
-            transition_matrix[t['i'], t['j']] = set_transition(t['type'], a=t['a'], b=t['b'])  
+            transition_matrix[t['i'], t['j']] = set_transition(t['type'], a=t['a'], b=t['b'])
+        
+        # Resample transition probabilities that need the rate to prob conversion. 
+        for t in resample_r2p_indicies:
+            transition_matrix[t['i'], t['j']] = set_transition(t['type'], a=t['a'], b=t['b'], t=t['t'], cycle_length=cycle_length)  
         
         # Resample time-dependent transition probabilities if needed (ie. from distributions)
         # First point of modification if we wish to handle per-interation probabilistic estimates
         for t in probabilistic_time_dependent_indicies:
             t['sampled_const'] = np.random.normal(t['const'], t['se_const'])
             t['sampled_ancillary'] = np.random.normal(t['ancillary'], t['se_ancillary']) 
+
+        # TODO: Contemplate the functionality of this. It currently has pretty specific rules of use
+        # Hacky way of dealing with multiple probabilistic Time-dependent states that share the same 
+        # sampled parameters... Uses the first instance of the sampled parameters 
+        # Based on the assumption that states share the same start-state and end-state name once numbers
+        # are stripped.
+        # (Note. this could be folded up to the above loop. Keeping separate for now...)
+        first_instance_sampled = {}
+        for t in probabilistic_time_dependent_indicies:
+            start_state_stripped = ''.join([i for i in t['start_state'] if not i.isdigit()])
+            end_state_stripped = ''.join([i for i in t['end_state'] if not i.isdigit()])
+            pair_id = start_state_stripped + end_state_stripped
+            if pair_id in first_instance_sampled:
+                t['sampled_const'] = first_instance_sampled[pair_id]['sampled_const']
+                t['sampled_ancillary'] = first_instance_sampled[pair_id]['sampled_ancillary']
+            else:
+                first_instance_sampled[pair_id] = {'sampled_const':t['sampled_const'], 
+                                                   'sampled_ancillary':t['sampled_ancillary']}
 
         # For every timestep until max is reached
         while cycle < num_cycles:
@@ -274,21 +302,21 @@ def calculate_costs(population_array, model_specification: ModelSpec, mode='unco
         c_type = t[2]
         if c_type == 'beta':
             for i in range(0,iteration_costs.shape[0]):
-                iteration_costs[:,state_index] = get_beta(t[3], t[4])
+                iteration_costs[i, state_index] = get_beta(t[3], t[4])
         elif c_type == 'gamma':
             for i in range(0,iteration_costs.shape[0]):
-                iteration_costs[:,state_index] = get_gamma(t[3], t[4])
+                iteration_costs[i, state_index] = get_gamma(t[3], t[4])
         elif c_type == 'static':
-            iteration_costs[:,state_index] = t[3]
+            iteration_costs[:, state_index] = t[3]
         elif c_type == 'copy':
             copy_costs[state_index] = [state_mapping[t[3]]] # cost for index (noted as copy) points to index of target
-            iteration_costs[state_index] = np.nan # initialize as nan
+            iteration_costs[:, state_index] = np.nan # initialize as nan
         else:
             raise ValueError('Error: Bad cost type specification', c_type)
 
     # Fill copied costs
     for c in copy_costs:
-        iteration_costs[c] = iteration_costs[copy_costs[c]]
+        iteration_costs[:, c] = iteration_costs[:, copy_costs[c]].reshape(iteration_costs.shape[0])
     if np.isnan(iteration_costs).any(): #TODO: Could make this output something more detailed. I.e. index of error cost
         raise ValueError('Error: NaN cost specified. Likely a copy type error. Please check costs sheet')
 
@@ -358,21 +386,27 @@ def calculate_utilities(population_array, model_specification: ModelSpec, mode='
         u_type = t[2]
         if u_type == 'beta':
             for i in range(0,iteration_utils.shape[0]):
-                iteration_utils[i,state_index] = get_beta(t[3], t[4])
+                iteration_utils[i, state_index] = get_beta(t[3], t[4])
+        elif u_type == 'beta_disutility':
+            for i in range(0,iteration_utils.shape[0]):
+                iteration_utils[i, state_index] = 1-get_beta(t[3], t[4])
         elif u_type == 'gamma':
             for i in range(0,iteration_utils.shape[0]):
-                iteration_utils[i,state_index] = get_gamma(t[3], t[4])
+                iteration_utils[i, state_index] = get_gamma(t[3], t[4])
+        elif u_type == 'gamma_disutility':
+            for i in range(0,iteration_utils.shape[0]):
+                iteration_utils[i, state_index] = 1-get_gamma(t[3], t[4])
         elif u_type == 'static':
-            iteration_utils[:,state_index] = t[3]
+            iteration_utils[:, state_index] = t[3]
         elif u_type == 'copy':
             copy_utils[state_index] = [state_mapping[t[3]]] # cost for index (noted as copy) points to index of target
-            iteration_utils[state_index] = np.nan # initialize as nan
+            iteration_utils[:, state_index] = np.nan # initialize as nan
         else:
             raise ValueError('Error: Bad utility type specification', u_type)
     
     # Fill copied utilities
     for u in copy_utils:
-        iteration_utils[u] = iteration_utils[copy_utils[u]]
+        iteration_utils[:, u] = iteration_utils[:, copy_utils[u]].reshape(iteration_utils.shape[0])
     if np.isnan(iteration_utils).any(): #TODO: Could make this output something more detailed. I.e. index of error utility
         raise ValueError('Error: NaN utility specified. Likely a copy type error. Please check utility sheet')
 

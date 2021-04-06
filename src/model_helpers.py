@@ -101,11 +101,28 @@ def get_beta(mean, variance):
     # TODO: Error checking (look at wikipedia too) - consider moving out when checking the spreasheet. (all should be specified correctly before running)
     # if mean - close to 1 and 0 may return errors
     if variance > mean*(1-mean):
-        raise ValueError('Variance is too large to estimate parameters alpha and beta')
+        raise ValueError('Variance is too large to estimate parameters alpha and beta. Mean:', mean, 'Var:',variance)
     
     alpha = mean*(((mean*(1-mean))/variance) - 1)  
     beta = (1-mean)*(((mean*(1-mean))/variance) - 1)
     return np.random.beta(alpha, beta)
+
+def get_beta_rate_to_prob(a, b, t, cycle_length):
+    '''
+    Sample a proportion from a beta distribution and convert to a rate then probability based on cycle length 
+    using formulas outlined in the "green book" by Briggs et al.
+    Inputs: a = the "numerator"
+            b = the "denominator"
+            t = the time span in years that the events a/b were observed
+            cycle_length = cycle length of the model in days
+    Ouputs: a float between 0 and 1 
+    '''
+    beta_p = np.random.beta(a, b-a)
+    rate = -(math.log(1-beta_p))/t
+    probability = 1 - math.exp(-rate * (cycle_length/365))
+    if probability > 1 or probability < 0:
+        raise ValueError('Invalid probability calculated >1 or <0. Please check params:', a, b, t, probability)
+    return probability
 
 def get_time_dependent_weibull(const, p, cycle, cycle_length):
     '''
@@ -176,9 +193,11 @@ def calculate_residual(matrix, state_index):
     row_sum = matrix[state_index, :].sum()
     residual = 1 - row_sum
     
-    # Error checking
+    # Error checking 
+    # TODO: Think about how you want these errors to be raised.. Currently assumes if < 1, residual == 0
     if residual < 0:
-        raise ValueError('Error: residual is negative', round(residual,5))
+        return 0
+        raise ValueError('Error: residual is negative', round(residual,5), 'state_index:', state_index)
         
     return residual
 
@@ -193,7 +212,11 @@ def set_transition(transition_type, **kwargs):
     if transition_type == 'beta':
         if not all (parameter in kwargs for parameter in ('a','b')):
             raise ValueError('Incorrect inputs specified for beta. Need a and b.')
-        return np.random.beta(kwargs['a'], kwargs['b'])
+        return np.random.beta(kwargs['a'], kwargs['b']-kwargs['a'])
+    elif transition_type == 'beta_r2p':
+        if not all (parameter in kwargs for parameter in ('a','b','t','cycle_length')):
+            raise ValueError('Incorrect inputs specified for beta_rate. Need a and b and t and cycle_length')
+        return get_beta_rate_to_prob(kwargs['a'], kwargs['b'], kwargs['t'], kwargs['cycle_length'])
     elif transition_type == 'gamma':
         if not all (parameter in kwargs for parameter in ('a','b')):
             raise ValueError('Incorrect inputs specified for gamma. Need a and b.')
