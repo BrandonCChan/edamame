@@ -33,6 +33,13 @@ def check_excel_file(excel_book):
         print(check_multiple.loc[check_multiple['count'] > 1])
         raise ValueError('Multiple identical defined transitions found. Please check transitions sheet in input excel document')
 
+    # Check dirichlet parameters... All outbound for a given state must be dirichlet?
+    dirichlet_transitions = transitions_df.loc[transitions_df.type == 'dirichlet']
+    for start_state in dirichlet_transitions.start_state.unique():
+        outbound_transitions = transitions_df.loc[transitions_df.start_state == start_state]
+        if outbound_transitions.loc[outbound_transitions.type != 'dirichlet'].shape[0] > 0:
+            raise ValueError('Not all outbound transitions for state:', start_state ,' are of type dirichlet. Please check transitions sheet in input excel document')
+
     # Checks that each state has an entry/exit
     # TODO: consider that its possible for the entry/start state to be non-reenterable
     #       with that in mind its more logical that all states must have an outbound rather than enforcing entry

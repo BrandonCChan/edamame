@@ -132,7 +132,9 @@ def run_model(model_specification: ModelSpec):
     # Iterate through specified transtions and initialize constant values of matrix. Transitions that vary 
     # (ie. time dependent or resampled) are assigned in model iteration step. 
     # Log indicies of transitions that need to be updated to quickly index the correct position in the transition matrix
-    for t in transitions_df.itertuples():
+    # Does not do any initialization of Dirichlet transitions. That is handled separately
+    # below
+    for t in transitions_df.loc[transitions_df.type != 'dirichlet'].itertuples():
         start_state_index = state_mapping[t[1]] # mapped row number of start state
         end_state_index = state_mapping[t[2]] # mapped column number of end state
         t_type = t[3] # type of transition 
@@ -171,6 +173,27 @@ def run_model(model_specification: ModelSpec):
         else:
             raise ValueError('Invalid transition type provided:',str(t_type),'Please double check excel file specification')
 
+    # Set up and log transitions that utilize the Dirichlet for transition probabilities.
+    # These by nature are similar to beta transitions as they are resampled per-iteration
+    # Logs indicies of the transition matrix and the parameters of the distribution per Dirichlet "group"
+    dirichlet_indicies = {}
+    dirichlet_transitions = transitions_df.loc[transitions_df.type == 'dirichlet']
+    if len(dirichlet_transitions) > 0:
+        # For every start state that requires a dirichlet type
+        for start_state in dirichlet_transitions.start_state.unique():
+            outbound_transitions = transitions_df.loc[transitions_df.start_state == start_state]
+            dirichlet_indicies[start_state] = []
+            # Iterate through each of the outbound states
+            for t in outbound_transitions.itertuples():
+                start_state_index = state_mapping[t[1]] # mapped row number of start state
+                end_state_index = state_mapping[t[2]] # mapped column number of end state
+                t_type = t[3] # type of transition 
+                params = t[4:] # parameters
+                dirichlet_indicies[start_state] += [{'start_state':t[1], 'end_state':t[2], 
+                                                    'i':start_state_index, 'j':end_state_index, 
+                                                    'type':t[3], 
+                                                    'a':params[0]}]
+
     #---------------------------------------------------------------------------------------------------
     # Run the simulation (for a single arm)
     # TODO: could wrap this into a numba function for increase in speed
@@ -206,6 +229,18 @@ def run_model(model_specification: ModelSpec):
         for t in resample_r2p_indicies:
             transition_matrix[t['i'], t['j']] = set_transition(t['type'], a=t['a'], b=t['b'], t=t['t'], cycle_length=cycle_length)  
         
+        # Resample transition probabilities from dirichlet if needed - Updates matrix as appropriate
+        for d in dirichlet_indicies:
+            # 1) Compile parameterization of dirichlet (could move up?)
+            parameters = []
+            for entry in dirichlet_indicies[d]:
+                parameters += [entry['a']]
+            # 2) Sample from dirichlet
+            dirichlet_output = np.random.dirichlet(parameters) 
+            # 3) Update transition probability at appropriate indicied in the transiton matrix
+            for t, tp in zip(dirichlet_indicies[d], dirichlet_output):
+                transition_matrix[t['i'], t['j']] = tp
+
         # Resample time-dependent transition probabilities if needed (ie. from distributions)
         # First point of modification if we wish to handle per-interation probabilistic estimates
         for t in probabilistic_time_dependent_indicies:
