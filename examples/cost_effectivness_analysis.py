@@ -70,19 +70,61 @@ outputs_treat = ModelData(pop_treat, cost_treat, util_treat)
 # Print basic model outputs
 #---------------------------------------------------------------------------------------------------
 significant_digits = 2 #convenience variable to format print statement numbers 
-print()
-print('mean cost treatment arm:', round(np.mean(outputs_treat.iteration_cost_data), significant_digits))
-print('mean cost base case arm:', round(np.mean(outputs_base.iteration_cost_data), significant_digits))
-print('mean utility treatment arm:', round(np.mean(outputs_treat.iteration_util_data), significant_digits))
-print('mean utility base case arm:', round(np.mean(outputs_base.iteration_util_data), significant_digits))
-print('------------------------')
-print('std cost treatment arm:', round(np.std(outputs_treat.iteration_cost_data), significant_digits))
-print('std cost base case arm:', round(np.std(outputs_base.iteration_cost_data), significant_digits))
-print('std utility treatment arm:', round(np.std(outputs_treat.iteration_util_data), significant_digits))
-print('std utility base case arm:', round(np.std(outputs_base.iteration_util_data), significant_digits))
-print('------------------------')
-print('Difference in costs:', round((np.mean(outputs_treat.iteration_cost_data) - np.mean(outputs_base.iteration_cost_data)), significant_digits))
-print('Difference in utility:', round((np.mean(outputs_treat.iteration_util_data) - np.mean(outputs_base.iteration_util_data)), significant_digits))
+n_sample = 1
+
+#-----------------------------
+# Cost stats:
+#-----------------------------
+mean_cost_treat = np.mean(outputs_treat.iteration_cost_data)
+std_cost_treat = np.std(outputs_treat.iteration_cost_data)
+up_CI_cost_treat = mean_cost_treat + (1.96*(std_cost_treat/math.sqrt(n_sample)))
+low_CI_cost_treat = mean_cost_treat - (1.96*(std_cost_treat/math.sqrt(n_sample)))
+
+mean_cost_base = np.mean(outputs_base.iteration_cost_data)
+std_cost_base = np.std(outputs_base.iteration_cost_data) 
+up_CI_cost_base = mean_cost_base + (1.96*(std_cost_base/math.sqrt(n_sample)))
+low_CI_cost_base = mean_cost_base - (1.96*(std_cost_base/math.sqrt(n_sample)))
+
+print('--------------------------------------------------------------')
+print('Treatment arm costs: ',round(mean_cost_treat, 2),'[',round(low_CI_cost_treat, 2),',',round(up_CI_cost_treat,2),']', '| SD:',round(std_cost_treat,2))
+print('Base arm costs:      ',round(mean_cost_base, 2),'[',round(low_CI_cost_base, 2),',',round(up_CI_cost_base,2),']', '| SD:',round(std_cost_base,2))
+print('--------------------------------------------------------------')
+
+#-----------------------------
+# Utility stats:
+#-----------------------------
+mean_util_treat = np.mean(outputs_treat.iteration_util_data)
+std_util_treat = np.std(outputs_treat.iteration_util_data)
+up_CI_util_treat = mean_util_treat + (1.96*(std_util_treat/math.sqrt(n_sample)))
+low_CI_util_treat = mean_util_treat - (1.96*(std_util_treat/math.sqrt(n_sample)))
+
+mean_util_base = np.mean(outputs_base.iteration_util_data)
+std_util_base = np.std(outputs_base.iteration_util_data) 
+up_CI_util_base= mean_util_base + (1.96*(std_util_base/math.sqrt(n_sample)))
+low_CI_util_base = mean_util_base - (1.96*(std_util_base/math.sqrt(n_sample)))
+
+print('Treatment arm utility: ',round(mean_util_treat, 2),'[',round(low_CI_util_treat, 2),',',round(up_CI_util_treat,2),']', '| SD:',round(std_util_treat,2))
+print('Base arm utility:      ',round(mean_util_base, 2),'[',round(low_CI_util_base, 2),',',round(up_CI_util_base,2),']', '| SD:',round(std_util_base,2))
+print('--------------------------------------------------------------')
+
+#-----------------------------
+# Delta arms stats:
+#-----------------------------
+diff_costs = outputs_treat.iteration_cost_data - outputs_base.iteration_cost_data
+mean_cost_diff = np.mean(diff_costs)
+std_cost_diff = np.std(diff_costs)
+up_CI_cost_diff = mean_cost_diff + (1.96*(std_cost_diff/math.sqrt(n_sample)))
+low_CI_cost_diff = mean_cost_diff - (1.96*(std_cost_diff/math.sqrt(n_sample)))
+
+diff_utils = outputs_treat.iteration_util_data - outputs_base.iteration_util_data
+mean_util_diff = np.mean(diff_utils)
+std_util_diff = np.std(diff_utils)
+up_CI_util_diff = mean_util_diff + (1.96*(std_util_diff/math.sqrt(n_sample)))
+low_CI_util_diff = mean_util_diff - (1.96*(std_util_diff/math.sqrt(n_sample)))
+
+print('Difference in cost:    ',round(mean_cost_diff, significant_digits),'[',round(low_CI_cost_diff, significant_digits),',',round(up_CI_cost_diff,significant_digits),']', '| SD:',round(std_cost_diff,significant_digits))
+print('Difference in utility: ',round(mean_util_diff, significant_digits),'[',round(low_CI_util_diff, significant_digits),',',round(up_CI_util_diff,significant_digits),']', '| SD:',round(std_util_diff,significant_digits))
+print('--------------------------------------------------------------')
 
 #---------------------------------------------------------------------------------------------------
 # Calculate ICER
@@ -114,3 +156,35 @@ plt.ylim(min(c)-50, max(c)+50) # Add padding to axis limits
 plt.xlim(min(u)-0.05, max(u)+0.05)
 
 plt.show()
+
+#----------------------------
+# Quadrant counting
+# Uses same lambda threshold as detailed in prior step: variable "ce_threshold"
+#----------------------------
+NW = 0
+NE = 0
+SW = 0
+SE = 0
+count_under_threshold = 0
+num_iterations = c.shape[0]
+for i in range(0, num_iterations):
+    if c[i] > 0: # North
+        if u[i] > 0: # East
+            NE += 1
+            y = u[i] * ce_threshold # maximum acceptatble cost at a given value of utility 
+            if c[i] < y:
+                count_under_threshold += 1
+        else: # West
+            NW += 1
+    else: #South
+        if u[i] > 0: # East
+            SE += 1
+        else: # West
+            SW += 1
+print()
+print('Number of points in each quadrant of CE plane:')
+print('North-West:', NW)
+print('North-East:', NE, '| Under-threhsold:', count_under_threshold, '| Over-threshold:', NE-count_under_threshold)
+print('South-West:', SW)
+print('South-East:', SE)
+print(NW+NE+SW+SE)
