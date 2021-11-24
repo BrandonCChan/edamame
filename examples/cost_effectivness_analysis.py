@@ -3,7 +3,7 @@
 # the framework. Mirrors code detailed in "Cost-Effectivness Analysis.ipynb"
 # Please see the jupyter notebook for additional code on calculating other output metrics
 #
-# Brandon Chan | January 2021
+# Brandon Chan | November 2021
 #---------------------------------------------------------------------------------------------------
 # Import Packages
 #---------------------------------------------------------------------------------------------------
@@ -17,6 +17,9 @@ import os # for file path things
 import sys
 sys.path.insert(0,"../src") # Direct to the src directory depending on where you're developing from
 from markov_modeling import *
+
+# Optional: specify random seed
+np.random.seed(123)
 
 #---------------------------------------------------------------------------------------------------
 # Load base and treatment arm specifications, run model, and calculate cost and utility outputs
