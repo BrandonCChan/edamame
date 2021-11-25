@@ -1,5 +1,5 @@
 # monte_carlo_markov
-For decision analytic modeling and cost-effectiveness analysis
+For decision analytic modeling and cost-effectiveness analysis. Allows users to flexibly define model schematics and parameters in excel workbooks before utilizing python packages to load, run, and generate model outputs.
 
 ## Requirements (tested with):
 See requirements.txt
