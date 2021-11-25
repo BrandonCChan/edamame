@@ -2,7 +2,7 @@
 # Code for running a monte carlo markov using a model structure and parameters specified in an excel
 # document. (See README and test_parameters.xlsx for addional explaination and example)
 #
-# Brandon Chan | January 2021
+# Brandon Chan | November 2021
 #---------------------------------------------------------------------------------------------------
 # Import packages/libraries
 #---------------------------------------------------------------------------------------------------
