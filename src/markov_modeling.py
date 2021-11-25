@@ -33,7 +33,8 @@ class ModelSpec:
         input_file = pd.ExcelFile(filepath) # read in excel file
         check_excel_file(input_file)
 
-        self.structure = pd.read_excel(input_file, 'transitions') 
+        self.structure = pd.read_excel(input_file, 'transitions')
+        self.structure['type'] = self.structure['type'].apply(lambda x: x.strip()) # The adam safety check
         self.cost_specs = pd.read_excel(input_file, 'costs')
         self.util_specs = pd.read_excel(input_file, 'utilities')
         self.simulation_parameters = pd.read_excel(input_file, 'specification', header=None, index_col=0)
@@ -84,7 +85,24 @@ class ModelData:
         self.cycle_util_data = np.sum(self.util_data, axis=1)
 
         self.iteration_cost_data = np.sum(self.cycle_cost_data, axis=1)
-        self.iteration_util_data = np.sum(self.cycle_util_data, axis=1)        
+        self.iteration_util_data = np.sum(self.cycle_util_data, axis=1) 
+
+    def print_summary(self, significant_digits=2):
+        '''
+        Function to print the cost and utility summary of the model arm
+
+        Note: Confidence intervals calculated using +/- 1.96 * SD
+        '''
+        print('Cost:')
+        up_CI_cost_diff = np.mean(self.iteration_cost_data) + (1.96*(np.std(self.iteration_cost_data)/math.sqrt(1)))
+        low_CI_cost_diff = np.mean(self.iteration_cost_data) - (1.96*(np.std(self.iteration_cost_data)/math.sqrt(1)))
+        print(round(np.mean(self.iteration_cost_data), significant_digits),'[',round(low_CI_cost_diff, significant_digits),',',round(up_CI_cost_diff,significant_digits),']', '| SD:',round(np.std(self.iteration_cost_data),significant_digits))
+        print()
+        print('Utility:')
+        up_CI_util_diff = np.mean(self.iteration_util_data) + (1.96*(np.std(self.iteration_util_data)/math.sqrt(1)))
+        low_CI_util_diff = np.mean(self.iteration_util_data) - (1.96*(np.std(self.iteration_util_data)/math.sqrt(1)))
+        print(round(np.mean(self.iteration_util_data), significant_digits),'[',round(low_CI_util_diff, significant_digits),',',round(up_CI_util_diff,significant_digits),']', '| SD:',round(np.std(self.iteration_util_data),significant_digits))
+        print()     
 
 
 def run_model(model_specification: ModelSpec):

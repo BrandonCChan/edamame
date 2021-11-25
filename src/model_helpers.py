@@ -30,7 +30,11 @@ def check_excel_file(excel_book):
     # Check only one unique start-end state pair is defined. (ie. no repeats/multiples of the same transition)
     check_multiple = transitions_df.groupby(['start_state','end_state']).size().reset_index().rename(columns={0:'count'})
     if (check_multiple['count'] > 1).any():
+        print()
+        print('-----Problem Start/End States------')
         print(check_multiple.loc[check_multiple['count'] > 1])
+        print('-----------------------------------')
+        print()
         raise ValueError('Multiple identical defined transitions found. Please check transitions sheet in input excel document')
 
     # Check dirichlet parameters... All outbound for a given state must be dirichlet?
