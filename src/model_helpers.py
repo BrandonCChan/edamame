@@ -37,6 +37,19 @@ def check_excel_file(excel_book):
         print()
         raise ValueError('Multiple identical defined transitions found. Please check transitions sheet in input excel document')
 
+    # Check for valid defined transition types
+    valid_t_types = ['constant', 'beta', 'gamma', 'residual'
+                     'time_dependent_weibull', 'time_dependent_weibull_RR',
+                     'probabilistic_time_dependent_weibull', 'probabilistic_time_dependent_weibull_RR',
+                     'time_dependent_gompertz', 'time_dependent_gompertz']
+    invalid_t_types = transitions_df.loc[transitions_df['type'].isin(valid_t_types) == False]
+    if len(invalid_t_types) > 0:
+        print()
+        for index, row in invalid_t_types.iterrows():
+            print('Invalid transition type:', row.type, 'specified in row:', str(index+2), 'of excel sheet')
+        print()
+        raise ValueError('>= 1 Invalid transition type specified. Please check transitions sheet in input excel document')
+
     # Check dirichlet parameters... All outbound for a given state must be dirichlet?
     dirichlet_transitions = transitions_df.loc[transitions_df.type == 'dirichlet']
     for start_state in dirichlet_transitions.start_state.unique():
@@ -74,11 +87,6 @@ def check_excel_file(excel_book):
 #---------------------------------------------------------------------------------------------------
 # Helper functions for selecting transition probabilities
 #---------------------------------------------------------------------------------------------------
-# Not sure how to use yet... but ok.
-def get_dirchlet(parameters):
-    #Samples a value from the dirchlet distribution based on input parameters
-    return np.random.dirichlet(parameters,1)
-
 def get_gamma(mean, variance):
     '''
     Samples a value from the gamma distribution based on an input mean and variance
@@ -135,7 +143,7 @@ def get_beta_rate_to_prob(a, b, t, cycle_length):
         raise ValueError('Invalid probability calculated >1 or <0. Please check params:', a, b, t, probability)
     return probability
 
-def get_time_dependent_weibull(const, p, cycle, cycle_length):
+def get_time_dependent_weibull(const, p, cycle, cycle_length, units):
     '''
     Obtains the transition probability for a time-dependent transition by sampling the approximated function 
     at the given time interval. 
@@ -145,8 +153,9 @@ def get_time_dependent_weibull(const, p, cycle, cycle_length):
     
     Inputs: const = regression constant (as output from a PH fitted weibull in stata)
             p = paramter p (as output from a PH fitted weibull in stata)
-            cycle = the current cycle of the model (ie. cycle i in 1:max_num_cycles)
-            cycle_length = the length of a cycle in days. 
+            cycle = integer representing the current cycle of the model (ie. cycle i in 1:max_num_cycles)
+            cycle_length = integer representing the length of a cycle in days.
+            units = string denoting the time units of the survival curve (accepted units are year, month, and day)
     Output: tdtp = A float between 0 and 1 denoting the time-dependent transition probability from A to B 
             based on the input parameters
 
@@ -154,18 +163,27 @@ def get_time_dependent_weibull(const, p, cycle, cycle_length):
     '''
     lmbda = math.exp(const)
 
+    scaling_mapping = {'year':365, 'month':30, 'day':1}
+    if units in scaling_mapping:
+        unit_scale = scaling_mapping[units]
+    else:
+        raise ValueError('Unknown time unit provided for weibull time-dependent transition. Inputed value:', units,' Accepted values are [year, month, day]')   
+
     # adjusts to yearly x-axis. subtract 1 from t1 as model "starts at time 1" however first transition calculation is based off of t0 and t1
-    t1 = ((cycle-1)*cycle_length) / 365
-    t2 = ((cycle)*cycle_length) / 365
+    t1 = ((cycle-1)*cycle_length) / unit_scale
+    t2 = ((cycle)*cycle_length) / unit_scale
     
-    tdtp = 1 - ((math.exp(-lmbda*(t2**p))) / (math.exp(-lmbda*(t1**p))))
+    if math.exp(-lmbda*(t1**p)) == 0 or (math.exp(-lmbda*(t2**p))) == 0:
+        return 1
+    else:
+        tdtp = 1 - ((math.exp(-lmbda*(t2**p))) / (math.exp(-lmbda*(t1**p))))
 
-    if tdtp > 1 or tdtp < 0:
-        raise ValueError('Transition sampled is greater than 1 or less than 0. Sampled value:',round(tdtp,4),'at cycle:',cycle)
-    
-    return tdtp
+        if tdtp > 1 or tdtp < 0:
+            raise ValueError('Transition sampled is greater than 1 or less than 0. Sampled value:',round(tdtp,4),'at cycle:',cycle)
+        
+        return tdtp
 
-def get_time_dependent_gompertz(const, gamma, cycle, cycle_length):
+def get_time_dependent_gompertz(const, gamma, cycle, cycle_length, units):
     '''
     Obtains the transition probability for a time dependent transition represented as a gompertz
     
@@ -174,8 +192,9 @@ def get_time_dependent_gompertz(const, gamma, cycle, cycle_length):
     
     Inputs: const = the regression constant (as output from a PH fitted gompertz in stata)
             gamma = parameter gamma (as output from a PH gompertz fitted in stata)
-            cycle = the current cycle of the model (ie. cycle i in 1:max_num_cycles)
-            cycle_length = the length of a cycle in days.
+            cycle = integer representing the current cycle of the model (ie. cycle i in 1:max_num_cycles)
+            cycle_length = integer representing the length of a cycle in days.
+            units = string denoting the time units of the survival curve (accepted units are year, month, and day)
     Output: tdtp = A float between 0 and 1 denoting the time-dependent transition probability from A to B 
             based on the input parameters
 
@@ -183,8 +202,14 @@ def get_time_dependent_gompertz(const, gamma, cycle, cycle_length):
     '''
     lmbda = math.exp(const) 
 
-    t1 = ((cycle-1)*cycle_length) / 365
-    t2 = ((cycle)*cycle_length) / 365
+    scaling_mapping = {'year':365, 'month':30, 'day':1}
+    if units in scaling_mapping:
+        unit_scale = scaling_mapping[units]
+    else:
+        raise ValueError('Unknown time unit provided for gompertz time-dependent transition. Inputed value:', units,' Accepted values are [year, month, day]')
+
+    t1 = ((cycle-1)*cycle_length) / unit_scale
+    t2 = ((cycle)*cycle_length) / unit_scale
 
     # adjusts to yearly x-axis. subtract 1 from t1 as model "starts at time 1" however first transition calculation is based off of t0 and t1
     tdtp = 1 - ((math.exp(-lmbda*gamma**-1*(math.exp(gamma*t2)-1))) / (math.exp(-lmbda*gamma**-1*(math.exp(gamma*t1)-1))))
@@ -233,13 +258,13 @@ def set_transition(transition_type, **kwargs):
             raise ValueError('Incorrect inputs specified for gamma. Need a and b.')
         return get_gamma(kwargs['a'], kwargs['b']) 
     elif transition_type == 'time_dependent_weibull':
-        if not all (parameter in kwargs for parameter in ('const','ancillary','cycle','cycle_length')):
-            raise ValueError('Incorrect inputs specified for time dependent. Need const, p, cycle, and cycle_length.')
-        return get_time_dependent_weibull(kwargs['const'],kwargs['ancillary'],kwargs['cycle'],kwargs['cycle_length'])
+        if not all (parameter in kwargs for parameter in ('const','ancillary','cycle','cycle_length','units')):
+            raise ValueError('Incorrect inputs specified for time dependent. Need const, p, cycle, and cycle_length, and time units of curve.')
+        return get_time_dependent_weibull(kwargs['const'],kwargs['ancillary'],kwargs['cycle'],kwargs['cycle_length'],kwargs['units'])
     elif transition_type == 'time_dependent_gompertz':
-        if not all (parameter in kwargs for parameter in ('const','ancillary','cycle','cycle_length')):
-            raise ValueError('Incorrect inputs specified for time dependent. Need const, gamma, cycle, and cycle_length.')
-        return get_time_dependent_gompertz(kwargs['const'],kwargs['ancillary'],kwargs['cycle'],kwargs['cycle_length'])
+        if not all (parameter in kwargs for parameter in ('const','ancillary','cycle','cycle_length','units')):
+            raise ValueError('Incorrect inputs specified for time dependent. Need const, gamma, cycle, cycle_length, and time units of curve.')
+        return get_time_dependent_gompertz(kwargs['const'],kwargs['ancillary'],kwargs['cycle'],kwargs['cycle_length'],kwargs['units'])
     elif transition_type == 'constant':
         if 'transition' not in kwargs:
             raise ValueError('Incorrect inputs specified for constant:', kwargs,'Only need 1: transition')

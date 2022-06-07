@@ -93,12 +93,12 @@ class ModelData:
 
         Note: Confidence intervals calculated using +/- 1.96 * SD
         '''
-        print('Cost:')
+        print('Costs:')
         up_CI_cost_diff = np.mean(self.iteration_cost_data) + (1.96*(np.std(self.iteration_cost_data)/math.sqrt(1)))
         low_CI_cost_diff = np.mean(self.iteration_cost_data) - (1.96*(np.std(self.iteration_cost_data)/math.sqrt(1)))
         print(round(np.mean(self.iteration_cost_data), significant_digits),'[',round(low_CI_cost_diff, significant_digits),',',round(up_CI_cost_diff,significant_digits),']', '| SD:',round(np.std(self.iteration_cost_data),significant_digits))
         print()
-        print('Utility:')
+        print('Utilities:')
         up_CI_util_diff = np.mean(self.iteration_util_data) + (1.96*(np.std(self.iteration_util_data)/math.sqrt(1)))
         low_CI_util_diff = np.mean(self.iteration_util_data) - (1.96*(np.std(self.iteration_util_data)/math.sqrt(1)))
         print(round(np.mean(self.iteration_util_data), significant_digits),'[',round(low_CI_util_diff, significant_digits),',',round(up_CI_util_diff,significant_digits),']', '| SD:',round(np.std(self.iteration_util_data),significant_digits))
@@ -144,6 +144,7 @@ def run_model(model_specification: ModelSpec):
     resample_indicies = []
     resample_r2p_indicies = []
     time_dependent_indicies = []
+    time_dependent_indicies_RR = []
     probabilistic_time_dependent_indicies = []
     residual_indicies = []
 
@@ -174,16 +175,34 @@ def run_model(model_specification: ModelSpec):
             time_dependent_indicies += [{'start_state':t[1], 'end_state':t[2], 
                                          'i':start_state_index, 'j':end_state_index, 
                                          'type':t_type, 
+                                         'units':params[6],
                                          'const':params[0], 'ancillary':params[1]}]
+        elif t_type in ['time_dependent_weibull_RR']:
+            time_dependent_indicies_RR += [{'start_state':t[1], 'end_state':t[2], 
+                                            'i':start_state_index, 'j':end_state_index, 
+                                            'type':t_type[:-3],
+                                            'units':params[6],
+                                            'const':params[0], 'ancillary':params[1],
+                                            'logHR':params[2], 'sd_logHR': params[3]}]
         elif t_type in ['probabilistic_time_dependent_weibull', 'probabilistic_time_dependent_gompertz']:
             # Is treated the same as a time-dependent weibull or gompertz, hence why the type in the dictionary is adjusted to chop off the "probabilistic" part
             # sampled const and ancillary are default the listed "mean" const and ancillary
             probabilistic_time_dependent_indicies += [{'start_state':t[1],'end_state':t[2],
                                                        'i':start_state_index, 'j':end_state_index,
-                                                       'type':t_type[14:], 
+                                                       'type':t_type[14:],
+                                                       'units':params[6],
                                                        'const':params[0], 'ancillary':params[1],
                                                        'se_const':params[2], 'se_ancillary':params[3],
                                                        'sampled_const':params[0], 'sampled_ancillary':params[1]}]
+        elif t_type in ['probabilistic_time_dependent_weibull_RR']:
+            probabilistic_time_dependent_indicies += [{'start_state':t[1],'end_state':t[2],
+                                                       'i':start_state_index, 'j':end_state_index,
+                                                       'type':t_type[14:-3],
+                                                       'units':params[6], 
+                                                       'const':params[0], 'ancillary':params[1],
+                                                       'se_const':params[2], 'se_ancillary':params[3],
+                                                       'sampled_const':params[0], 'sampled_ancillary':params[1],
+                                                       'logHR':params[4], 'sd_logHR':params[5]}]
         elif t_type == 'residual':
             residual_indicies += [{'start_state':t[1], 'end_state':t[2], 
                                    'i':start_state_index, 'j':end_state_index, 
@@ -255,16 +274,24 @@ def run_model(model_specification: ModelSpec):
                 parameters += [entry['a']]
             # 2) Sample from dirichlet
             dirichlet_output = np.random.dirichlet(parameters) 
-            # 3) Update transition probability at appropriate indicied in the transiton matrix
+            # 3) Update transition probability at appropriate indicies in the transiton matrix
             for t, tp in zip(dirichlet_indicies[d], dirichlet_output):
                 transition_matrix[t['i'], t['j']] = tp
 
+        # Apply rate reduction via log(HR) if applicable for a given 
+        for t in time_dependent_indicies_RR:
+            t['const'] = t['const']+np.random.normal(t['logHR'], t['sd_logHR'])
+        time_dependent_indicies += time_dependent_indicies_RR
+
         # Resample time-dependent transition probabilities if needed (ie. from distributions)
         # First point of modification if we wish to handle per-interation probabilistic estimates
-        for t in probabilistic_time_dependent_indicies:
-            t['sampled_const'] = np.random.normal(t['const'], t['se_const'])
-            t['sampled_ancillary'] = np.random.normal(t['ancillary'], t['se_ancillary']) 
-
+        #
+        # Note: This is a point where a stata vs not stata paramertization would be affected.
+        #
+        # for t in probabilistic_time_dependent_indicies:
+        #     t['sampled_const'] = np.random.normal(t['const'], t['se_const'])
+        #     t['sampled_ancillary'] = np.random.normal(t['ancillary'], t['se_ancillary']) 
+        #
         # TODO: Contemplate the functionality of this. It currently has pretty specific rules of use
         # Hacky way of dealing with multiple probabilistic Time-dependent states that share the same 
         # sampled parameters... Uses the first instance of the sampled parameters 
@@ -280,19 +307,29 @@ def run_model(model_specification: ModelSpec):
                 t['sampled_const'] = first_instance_sampled[pair_id]['sampled_const']
                 t['sampled_ancillary'] = first_instance_sampled[pair_id]['sampled_ancillary']
             else:
-                first_instance_sampled[pair_id] = {'sampled_const':t['sampled_const'], 
-                                                   'sampled_ancillary':t['sampled_ancillary']}
+                t['sampled_const'] = np.random.normal(t['const'], t['se_const'])
+                t['sampled_ancillary'] = np.random.normal(t['ancillary'], t['se_ancillary'])
+                
+                # If rate reduction via log(HR) is implemented, tack it on to the constant. Like sampled const and ancillary, 
+                # the same sampled logHR will apply to states that share the same time-dependent parameters (based on start-end state names)
+                if 'logHR' in t:
+                    t['sampled_const'] = t['sampled_const']+np.random.normal(t['logHR'], t['sd_logHR'])
+                    first_instance_sampled[pair_id] = {'sampled_const':t['sampled_const'], 
+                                                       'sampled_ancillary':t['sampled_ancillary']}
+                else:
+                    first_instance_sampled[pair_id] = {'sampled_const':t['sampled_const'], 
+                                                       'sampled_ancillary':t['sampled_ancillary']}
 
         # For every timestep until max is reached
         while cycle < num_cycles:
             # Adjust time-dependent transition probabilities based on timestep if needed
             for t in time_dependent_indicies:
-                transition_matrix[t['i'], t['j']] = set_transition(t['type'], const=t['const'], ancillary=t['ancillary'], cycle=cycle, cycle_length=cycle_length)
+                transition_matrix[t['i'], t['j']] = set_transition(t['type'], const=t['const'], ancillary=t['ancillary'], cycle=cycle, cycle_length=cycle_length, units=t['units'])
             
             # Adjust proabilistic time-dependent transition probabilities based on timestep if needed (Triggers the same set_transition "pathway" 
             # as a non-probabilistic time-dependent, but passes the sampled parameters instead)
             for t in probabilistic_time_dependent_indicies:
-                transition_matrix[t['i'], t['j']] = set_transition(t['type'], const=t['sampled_const'], ancillary=t['sampled_ancillary'], cycle=cycle, cycle_length=cycle_length)
+                transition_matrix[t['i'], t['j']] = set_transition(t['type'], const=t['sampled_const'], ancillary=t['sampled_ancillary'], cycle=cycle, cycle_length=cycle_length, units=t['units'])
 
             # Calculate residual transition probailities if needed - Update matrix as appropriate
             for t in residual_indicies:
