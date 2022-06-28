@@ -1,18 +1,19 @@
-#---------------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------
 # Code for running a monte carlo markov using a model structure and parameters specified in an excel
 # document. (See README and test_parameters.xlsx for addional explaination and example)
 #
-# Brandon Chan | November 2021
-#---------------------------------------------------------------------------------------------------
+# Brandon Chan | June 2022
+# ---------------------------------------------------------------------------------------------------
 # Import packages/libraries
-#---------------------------------------------------------------------------------------------------
-import pandas as pd # Dataframe structure and manipulation
-import numpy as np # Scientific computing functionality (array and matrix operations and some stats things)
-import math # For additional math functions
-from time import perf_counter, strftime # For timing the runtime of the code
-from arch.bootstrap import IIDBootstrap # Bootstrap analysis for ICER CI calculation
+# ---------------------------------------------------------------------------------------------------
+import pandas as pd  # Dataframe structure and manipulation
+import numpy as np  # Scientific computing functionality (array and matrix operations and some stats things)
+import math  # For additional math functions
+from time import perf_counter, strftime  # For timing the runtime of the code
+from arch.bootstrap import IIDBootstrap  # Bootstrap analysis for ICER CI calculation
 # Importing required functions outlined in model_helpers.py
-from model_helpers import check_excel_file, get_gamma, get_beta, calculate_residual, set_transition, check_row_sums, normalize_transitions, check_model_population 
+from model_helpers import check_excel_file, get_gamma, get_beta, calculate_residual, set_transition, check_row_sums, normalize_transitions, check_model_population
+
 
 class ModelSpec:
     '''
@@ -26,22 +27,23 @@ class ModelSpec:
 
     TODO:// add model specification checks when in-code modifications are made to parameters 
     '''
+
     def __init__(self, filepath, model_name):
         self.model_name = model_name
         self.excel_file = filepath
 
-        input_file = pd.ExcelFile(filepath) # read in excel file
+        input_file = pd.ExcelFile(filepath)  # read in excel file
         check_excel_file(input_file)
 
         self.structure = pd.read_excel(input_file, 'transitions')
-        self.structure['type'] = self.structure['type'].apply(lambda x: x.strip()) # The adam safety check
+        self.structure['type'] = self.structure['type'].apply(lambda x: x.strip())  # The adam safety check
         self.cost_specs = pd.read_excel(input_file, 'costs')
         self.util_specs = pd.read_excel(input_file, 'utilities')
         self.simulation_parameters = pd.read_excel(input_file, 'specification', header=None, index_col=0)
 
         # Specification of variables regarding states in model
         unique_states = self.structure['start_state'].unique().tolist()
-        self.state_mapping = {i : unique_states.index(i) for i in unique_states}
+        self.state_mapping = {i: unique_states.index(i) for i in unique_states}
         self.num_states = len(unique_states)
 
         # Initialize model parameters based on spreadsheet defined values
@@ -61,11 +63,12 @@ class ModelData:
     Is used as an input for convenience functions to calculate metrics of interest.
 
     On initialization, requires 3 numpy arrays (population, cost, and utility) outputs to be passed in
-    
+
     Args: pdata = numpy array of shape [iteration_number x states x timesteps] representing the state to state movement in the model
-          cdata = numpy array of shape [iteration_number x states x timesteps] representing the cost per state per cycle 
+          cdata = numpy array of shape [iteration_number x states x timesteps] representing the cost per state per cycle
           udata = numpy array of shape [iteration_number x states x timesteps] representing the utility per state per cycle
     '''
+
     def __init__(self, pdata, cdata, udata):
         # Checks that all data have same dims (in two dimensions...)
         for i in range(0, 2):
@@ -85,7 +88,7 @@ class ModelData:
         self.cycle_util_data = np.sum(self.util_data, axis=1)
 
         self.iteration_cost_data = np.sum(self.cycle_cost_data, axis=1)
-        self.iteration_util_data = np.sum(self.cycle_util_data, axis=1) 
+        self.iteration_util_data = np.sum(self.cycle_util_data, axis=1)
 
     def print_summary(self, significant_digits=2):
         '''
@@ -94,15 +97,21 @@ class ModelData:
         Note: Confidence intervals calculated using +/- 1.96 * SD
         '''
         print('Costs:')
-        up_CI_cost_diff = np.mean(self.iteration_cost_data) + (1.96*(np.std(self.iteration_cost_data)/math.sqrt(1)))
-        low_CI_cost_diff = np.mean(self.iteration_cost_data) - (1.96*(np.std(self.iteration_cost_data)/math.sqrt(1)))
-        print(round(np.mean(self.iteration_cost_data), significant_digits),'[',round(low_CI_cost_diff, significant_digits),',',round(up_CI_cost_diff,significant_digits),']', '| SD:',round(np.std(self.iteration_cost_data),significant_digits))
+        up_CI_cost_diff = np.mean(self.iteration_cost_data) + (1.96 * (np.std(self.iteration_cost_data) / math.sqrt(1)))
+        low_CI_cost_diff = np.mean(self.iteration_cost_data) - (
+                    1.96 * (np.std(self.iteration_cost_data) / math.sqrt(1)))
+        print(round(np.mean(self.iteration_cost_data), significant_digits), '[',
+              round(low_CI_cost_diff, significant_digits), ',', round(up_CI_cost_diff, significant_digits), ']',
+              '| SD:', round(np.std(self.iteration_cost_data), significant_digits))
         print()
         print('Utilities:')
-        up_CI_util_diff = np.mean(self.iteration_util_data) + (1.96*(np.std(self.iteration_util_data)/math.sqrt(1)))
-        low_CI_util_diff = np.mean(self.iteration_util_data) - (1.96*(np.std(self.iteration_util_data)/math.sqrt(1)))
-        print(round(np.mean(self.iteration_util_data), significant_digits),'[',round(low_CI_util_diff, significant_digits),',',round(up_CI_util_diff,significant_digits),']', '| SD:',round(np.std(self.iteration_util_data),significant_digits))
-        print()     
+        up_CI_util_diff = np.mean(self.iteration_util_data) + (1.96 * (np.std(self.iteration_util_data) / math.sqrt(1)))
+        low_CI_util_diff = np.mean(self.iteration_util_data) - (
+                    1.96 * (np.std(self.iteration_util_data) / math.sqrt(1)))
+        print(round(np.mean(self.iteration_util_data), significant_digits), '[',
+              round(low_CI_util_diff, significant_digits), ',', round(up_CI_util_diff, significant_digits), ']',
+              '| SD:', round(np.std(self.iteration_util_data), significant_digits))
+        print()
 
 
 def run_model(model_specification: ModelSpec):
@@ -115,10 +124,10 @@ def run_model(model_specification: ModelSpec):
     '''
     if isinstance(model_specification, ModelSpec) == False:
         raise TypeError('Error: Expected input model_specification to be of type markov_modeling.ModelSpec')
-    
-    #---------------------------------------------------------------------------------------------------
+
+    # ---------------------------------------------------------------------------------------------------
     # Parameter initialization
-    #---------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------
     transitions_df = model_specification.structure
     num_states = model_specification.num_states
     max_iterations = model_specification.max_iterations
@@ -127,15 +136,15 @@ def run_model(model_specification: ModelSpec):
     name_start_state = model_specification.name_start_state
     state_mapping = model_specification.state_mapping
 
-    #---------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------
     # Generate matrix representation of model and identify/log state transitions that require resampling
     # or additional calcuations when simulating
-    # 
+    #
     # Dimensions of matrix = [num_states x num_states]
     # Rows map to starting state, columns map to target state
-    #---------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------
     # specify empty transition matrix
-    transition_matrix = np.zeros((num_states, num_states)) 
+    transition_matrix = np.zeros((num_states, num_states))
 
     # Keep track of specific indicies in the transition matrix that need to be updated "in-simulation"
     # ie. time-dependent transitions and transitions that get resampled/recalculated every iteration
@@ -148,67 +157,68 @@ def run_model(model_specification: ModelSpec):
     probabilistic_time_dependent_indicies = []
     residual_indicies = []
 
-    # Iterate through specified transtions and initialize constant values of matrix. Transitions that vary 
-    # (ie. time dependent or resampled) are assigned in model iteration step. 
+    # Iterate through specified transtions and initialize constant values of matrix. Transitions that vary
+    # (ie. time dependent or resampled) are assigned in model iteration step.
     # Log indicies of transitions that need to be updated to quickly index the correct position in the transition matrix
     # Does not do any initialization of Dirichlet transitions. That is handled separately
     # below
     for t in transitions_df.loc[transitions_df.type != 'dirichlet'].itertuples():
-        start_state_index = state_mapping[t[1]] # mapped row number of start state
-        end_state_index = state_mapping[t[2]] # mapped column number of end state
-        t_type = t[3] # type of transition 
-        params = t[4:] # parameters
-        
+        start_state_index = state_mapping[t[1]]  # mapped row number of start state
+        end_state_index = state_mapping[t[2]]  # mapped column number of end state
+        t_type = t[3]  # type of transition
+        params = t[4:]  # parameters
+
         if t_type == 'constant':
             transition_matrix[start_state_index, end_state_index] = set_transition('constant', transition=params[0])
         elif t_type in ['beta', 'gamma']:
-            resample_indicies += [{'start_state':t[1], 'end_state':t[2], 
-                                   'i':start_state_index, 'j':end_state_index, 
-                                   'type':t_type, 
-                                   'a':params[0], 'b':params[1]}]
+            resample_indicies += [{'start_state': t[1], 'end_state': t[2],
+                                   'i': start_state_index, 'j': end_state_index,
+                                   'type': t_type,
+                                   'a': params[0], 'b': params[1]}]
         elif t_type in ['beta_r2p']:
-            resample_r2p_indicies += [{'start_state':t[1], 'end_state':t[2], 
-                                       'i':start_state_index, 'j':end_state_index, 
-                                       'type':t_type, 
-                                       'a':params[0], 'b':params[1], 't':params[2]}]
+            resample_r2p_indicies += [{'start_state': t[1], 'end_state': t[2],
+                                       'i': start_state_index, 'j': end_state_index,
+                                       'type': t_type,
+                                       'a': params[0], 'b': params[1], 't': params[2]}]
         elif t_type in ['time_dependent_weibull', 'time_dependent_gompertz']:
-            time_dependent_indicies += [{'start_state':t[1], 'end_state':t[2], 
-                                         'i':start_state_index, 'j':end_state_index, 
-                                         'type':t_type, 
-                                         'units':params[6],
-                                         'const':params[0], 'ancillary':params[1]}]
+            time_dependent_indicies += [{'start_state': t[1], 'end_state': t[2],
+                                         'i': start_state_index, 'j': end_state_index,
+                                         'type': t_type,
+                                         'units': params[6],
+                                         'const': params[0], 'ancillary': params[1]}]
         elif t_type in ['time_dependent_weibull_RR']:
-            time_dependent_indicies_RR += [{'start_state':t[1], 'end_state':t[2], 
-                                            'i':start_state_index, 'j':end_state_index, 
-                                            'type':t_type[:-3],
-                                            'units':params[6],
-                                            'const':params[0], 'ancillary':params[1],
-                                            'logHR':params[2], 'sd_logHR': params[3]}]
+            time_dependent_indicies_RR += [{'start_state': t[1], 'end_state': t[2],
+                                            'i': start_state_index, 'j': end_state_index,
+                                            'type': t_type[:-3],
+                                            'units': params[6],
+                                            'const': params[0], 'ancillary': params[1],
+                                            'logHR': params[2], 'sd_logHR': params[3]}]
         elif t_type in ['probabilistic_time_dependent_weibull', 'probabilistic_time_dependent_gompertz']:
             # Is treated the same as a time-dependent weibull or gompertz, hence why the type in the dictionary is adjusted to chop off the "probabilistic" part
             # sampled const and ancillary are default the listed "mean" const and ancillary
-            probabilistic_time_dependent_indicies += [{'start_state':t[1],'end_state':t[2],
-                                                       'i':start_state_index, 'j':end_state_index,
-                                                       'type':t_type[14:],
-                                                       'units':params[6],
-                                                       'const':params[0], 'ancillary':params[1],
-                                                       'se_const':params[2], 'se_ancillary':params[3],
-                                                       'sampled_const':params[0], 'sampled_ancillary':params[1]}]
+            probabilistic_time_dependent_indicies += [{'start_state': t[1], 'end_state': t[2],
+                                                       'i': start_state_index, 'j': end_state_index,
+                                                       'type': t_type[14:],
+                                                       'units': params[6],
+                                                       'const': params[0], 'ancillary': params[1],
+                                                       'se_const': params[2], 'se_ancillary': params[3],
+                                                       'sampled_const': params[0], 'sampled_ancillary': params[1]}]
         elif t_type in ['probabilistic_time_dependent_weibull_RR']:
-            probabilistic_time_dependent_indicies += [{'start_state':t[1],'end_state':t[2],
-                                                       'i':start_state_index, 'j':end_state_index,
-                                                       'type':t_type[14:-3],
-                                                       'units':params[6], 
-                                                       'const':params[0], 'ancillary':params[1],
-                                                       'se_const':params[2], 'se_ancillary':params[3],
-                                                       'sampled_const':params[0], 'sampled_ancillary':params[1],
-                                                       'logHR':params[4], 'sd_logHR':params[5]}]
+            probabilistic_time_dependent_indicies += [{'start_state': t[1], 'end_state': t[2],
+                                                       'i': start_state_index, 'j': end_state_index,
+                                                       'type': t_type[14:-3],
+                                                       'units': params[6],
+                                                       'const': params[0], 'ancillary': params[1],
+                                                       'se_const': params[2], 'se_ancillary': params[3],
+                                                       'sampled_const': params[0], 'sampled_ancillary': params[1],
+                                                       'logHR': params[4], 'sd_logHR': params[5]}]
         elif t_type == 'residual':
-            residual_indicies += [{'start_state':t[1], 'end_state':t[2], 
-                                   'i':start_state_index, 'j':end_state_index, 
-                                   'type':t_type, 'params':params}]
+            residual_indicies += [{'start_state': t[1], 'end_state': t[2],
+                                   'i': start_state_index, 'j': end_state_index,
+                                   'type': t_type, 'params': params}]
         else:
-            raise ValueError('Invalid transition type provided:',str(t_type),'Please double check excel file specification')
+            raise ValueError('Invalid transition type provided:', str(t_type),
+                             'Please double check excel file specification')
 
     # Set up and log transitions that utilize the Dirichlet for transition probabilities.
     # These by nature are similar to beta transitions as they are resampled per-iteration
@@ -222,38 +232,38 @@ def run_model(model_specification: ModelSpec):
             dirichlet_indicies[start_state] = []
             # Iterate through each of the outbound states
             for t in outbound_transitions.itertuples():
-                start_state_index = state_mapping[t[1]] # mapped row number of start state
-                end_state_index = state_mapping[t[2]] # mapped column number of end state
-                t_type = t[3] # type of transition 
-                params = t[4:] # parameters
-                dirichlet_indicies[start_state] += [{'start_state':t[1], 'end_state':t[2], 
-                                                    'i':start_state_index, 'j':end_state_index, 
-                                                    'type':t[3], 
-                                                    'a':params[0]}]
+                start_state_index = state_mapping[t[1]]  # mapped row number of start state
+                end_state_index = state_mapping[t[2]]  # mapped column number of end state
+                t_type = t[3]  # type of transition
+                params = t[4:]  # parameters
+                dirichlet_indicies[start_state] += [{'start_state': t[1], 'end_state': t[2],
+                                                     'i': start_state_index, 'j': end_state_index,
+                                                     'type': t[3],
+                                                     'a': params[0]}]
 
-    #---------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------
     # Run the simulation (for a single arm)
-    # TODO: could wrap this into a numba function for increase in speed
-    #---------------------------------------------------------------------------------------------------
-    # Create result logging array/dataframe 
+    # TODO: could wrap this into a numba function for increase in speed?
+    # ---------------------------------------------------------------------------------------------------
+    # Create result logging array/dataframe
     # Shape: [iteration_number x states x timesteps] where timesteps = number of cycles
     results_log = np.zeros((max_iterations, num_states, num_cycles))
 
     print('beginning iterations...')
     iteration_times = np.zeros((max_iterations, 1))
     for iteration in range(0, max_iterations):
-        start_iteration_time = perf_counter() # begin timer for logging run time of model iteration
+        start_iteration_time = perf_counter()  # begin timer for logging run time of model iteration
 
         # Initialize the starting population/proportion for each state at beginning of each model iteration
         # I.e. starting with a zero column-vector of dimension [number_of_states x 1]
         # The initial "proportions" are assigned in accordance to the corresponding row of the vector
         # This corresponds with the row/name assignments of the transition matrix.
-        population = np.zeros((num_states, 1)) 
-        population[state_mapping[name_start_state]] = 1 
-        
+        population = np.zeros((num_states, 1))
+        population[state_mapping[name_start_state]] = 1
+
         # Initialize with population at time 0 (ie. first cycle everyone is in tx_1 or whereever presumablly)
         results_log[iteration, :, 0] = population.reshape(num_states)
-        
+
         # Initialize as 1 at every iteration becasue population at 0 is always the same at the beginning of
         # any given iteration?
         cycle = 1
@@ -261,11 +271,12 @@ def run_model(model_specification: ModelSpec):
         # Resample transition probailities if needed (ie. from distributions) - Update matrix as appropriate
         for t in resample_indicies:
             transition_matrix[t['i'], t['j']] = set_transition(t['type'], a=t['a'], b=t['b'])
-        
-        # Resample transition probabilities that need the rate to prob conversion. 
+
+        # Resample transition probabilities that need the rate to prob conversion.
         for t in resample_r2p_indicies:
-            transition_matrix[t['i'], t['j']] = set_transition(t['type'], a=t['a'], b=t['b'], t=t['t'], cycle_length=cycle_length)  
-        
+            transition_matrix[t['i'], t['j']] = set_transition(t['type'], a=t['a'], b=t['b'], t=t['t'],
+                                                               cycle_length=cycle_length)
+
         # Resample transition probabilities from dirichlet if needed - Updates matrix as appropriate
         for d in dirichlet_indicies:
             # 1) Compile parameterization of dirichlet (could move up?)
@@ -273,14 +284,14 @@ def run_model(model_specification: ModelSpec):
             for entry in dirichlet_indicies[d]:
                 parameters += [entry['a']]
             # 2) Sample from dirichlet
-            dirichlet_output = np.random.dirichlet(parameters) 
+            dirichlet_output = np.random.dirichlet(parameters)
             # 3) Update transition probability at appropriate indicies in the transiton matrix
             for t, tp in zip(dirichlet_indicies[d], dirichlet_output):
                 transition_matrix[t['i'], t['j']] = tp
 
-        # Apply rate reduction via log(HR) if applicable for a given 
+        # Apply rate reduction via log(HR) if applicable for a given
         for t in time_dependent_indicies_RR:
-            t['const'] = t['const']+np.random.normal(t['logHR'], t['sd_logHR'])
+            t['const'] = t['const'] + np.random.normal(t['logHR'], t['sd_logHR'])
         time_dependent_indicies += time_dependent_indicies_RR
 
         # Resample time-dependent transition probabilities if needed (ie. from distributions)
@@ -290,11 +301,11 @@ def run_model(model_specification: ModelSpec):
         #
         # for t in probabilistic_time_dependent_indicies:
         #     t['sampled_const'] = np.random.normal(t['const'], t['se_const'])
-        #     t['sampled_ancillary'] = np.random.normal(t['ancillary'], t['se_ancillary']) 
+        #     t['sampled_ancillary'] = np.random.normal(t['ancillary'], t['se_ancillary'])
         #
         # TODO: Contemplate the functionality of this. It currently has pretty specific rules of use
-        # Hacky way of dealing with multiple probabilistic Time-dependent states that share the same 
-        # sampled parameters... Uses the first instance of the sampled parameters 
+        # Hacky way of dealing with multiple probabilistic Time-dependent states that share the same
+        # sampled parameters... Uses the first instance of the sampled parameters
         # Based on the assumption that states share the same start-state and end-state name once numbers
         # are stripped.
         # (Note. this could be folded up to the above loop. Keeping separate for now...)
@@ -309,53 +320,59 @@ def run_model(model_specification: ModelSpec):
             else:
                 t['sampled_const'] = np.random.normal(t['const'], t['se_const'])
                 t['sampled_ancillary'] = np.random.normal(t['ancillary'], t['se_ancillary'])
-                
-                # If rate reduction via log(HR) is implemented, tack it on to the constant. Like sampled const and ancillary, 
+
+                # If rate reduction via log(HR) is implemented, tack it on to the constant. Like sampled const and ancillary,
                 # the same sampled logHR will apply to states that share the same time-dependent parameters (based on start-end state names)
                 if 'logHR' in t:
-                    t['sampled_const'] = t['sampled_const']+np.random.normal(t['logHR'], t['sd_logHR'])
-                    first_instance_sampled[pair_id] = {'sampled_const':t['sampled_const'], 
-                                                       'sampled_ancillary':t['sampled_ancillary']}
+                    t['sampled_const'] = t['sampled_const'] + np.random.normal(t['logHR'], t['sd_logHR'])
+                    first_instance_sampled[pair_id] = {'sampled_const': t['sampled_const'],
+                                                       'sampled_ancillary': t['sampled_ancillary']}
                 else:
-                    first_instance_sampled[pair_id] = {'sampled_const':t['sampled_const'], 
-                                                       'sampled_ancillary':t['sampled_ancillary']}
+                    first_instance_sampled[pair_id] = {'sampled_const': t['sampled_const'],
+                                                       'sampled_ancillary': t['sampled_ancillary']}
 
         # For every timestep until max is reached
         while cycle < num_cycles:
             # Adjust time-dependent transition probabilities based on timestep if needed
             for t in time_dependent_indicies:
-                transition_matrix[t['i'], t['j']] = set_transition(t['type'], const=t['const'], ancillary=t['ancillary'], cycle=cycle, cycle_length=cycle_length, units=t['units'])
-            
-            # Adjust proabilistic time-dependent transition probabilities based on timestep if needed (Triggers the same set_transition "pathway" 
+                transition_matrix[t['i'], t['j']] = set_transition(t['type'], const=t['const'],
+                                                                   ancillary=t['ancillary'], cycle=cycle,
+                                                                   cycle_length=cycle_length, units=t['units'])
+
+            # Adjust proabilistic time-dependent transition probabilities based on timestep if needed (Triggers the same set_transition "pathway"
             # as a non-probabilistic time-dependent, but passes the sampled parameters instead)
             for t in probabilistic_time_dependent_indicies:
-                transition_matrix[t['i'], t['j']] = set_transition(t['type'], const=t['sampled_const'], ancillary=t['sampled_ancillary'], cycle=cycle, cycle_length=cycle_length, units=t['units'])
+                transition_matrix[t['i'], t['j']] = set_transition(t['type'], const=t['sampled_const'],
+                                                                   ancillary=t['sampled_ancillary'], cycle=cycle,
+                                                                   cycle_length=cycle_length, units=t['units'])
 
             # Calculate residual transition probailities if needed - Update matrix as appropriate
             for t in residual_indicies:
-                transition_matrix[t['i'], t['j']] = 0 # AFTER RESAMPLING RESIDUAL IS RECALCULATED FROM ZERO (but only zero specific transition i to j)
+                transition_matrix[t['i'], t[
+                    'j']] = 0  # AFTER RESAMPLING RESIDUAL IS RECALCULATED FROM ZERO (but only zero specific transition i to j)
                 transition_matrix[t['i'], t['j']] = calculate_residual(transition_matrix, t['i'])
-       
+
             # Normalize to a valid matrix and perform sum check
-            transition_matrix = normalize_transitions(transition_matrix) 
+            transition_matrix = normalize_transitions(transition_matrix)
             check_row_sums(transition_matrix)
-            
+
             # Calculate the movement for the "population" in each state to another
             # population is already a column vector, dont need to transpose.
             population = transition_matrix.T @ population
-            
+
             # Check: does population sum to 1? (assuming a round to 5 significant digits hold)
             check_model_population(population)
-            
-            # Update results_log after ever timestep
-            results_log[iteration, :, cycle] = population.reshape(num_states) 
-            
-            cycle += 1 # move to next cycle
 
-        iteration_times[iteration] = [perf_counter() - start_iteration_time] # log time required to run interation
+            # Update results_log after ever timestep
+            results_log[iteration, :, cycle] = population.reshape(num_states)
+
+            cycle += 1  # move to next cycle
+
+        iteration_times[iteration] = [perf_counter() - start_iteration_time]  # log time required to run interation
 
     print('model done...')
-    print('total time:',round(iteration_times.sum(), 2),'seconds || mean time per iteration:', round(iteration_times.mean(), 2),'seconds') 
+    print('total time:', round(iteration_times.sum(), 2), 'seconds || mean time per iteration:',
+          round(iteration_times.mean(), 2), 'seconds')
 
     return results_log
 
@@ -368,9 +385,9 @@ def calculate_costs(population_array, model_specification: ModelSpec, mode='unco
     Inputs: population_array = [num_iterations x num_states x num_cycles] shaped numpy array representing
                                model output with respect to population movement
             model_specification = instance of the ModelSpec object with a loaded specification
-            mode = the method in which to calculate the utility output. default is uncorrected. 
+            mode = the method in which to calculate the utility output. default is uncorrected.
                    "trapezoid" can be specified to use the trapezoid method for half-cycle corrections
-    Output: results_cost = [num_iterations x num_states x num_cycles] representing the cost at each state, 
+    Output: results_cost = [num_iterations x num_states x num_cycles] representing the cost at each state,
                            in each cycle, relative to the popoulation in a given state.
             *Note: if mode='trapezoid' the output result_cost will have a shape of [num_iterations x num_states x num_cycles-1]
                    this is because of the way it is calculated.
@@ -378,7 +395,9 @@ def calculate_costs(population_array, model_specification: ModelSpec, mode='unco
     if isinstance(model_specification, ModelSpec) == False:
         raise TypeError('Error: Expected input model_specification to be of type markov_modeling.ModelSpec')
     if len(model_specification.state_mapping) != population_array.shape[1]:
-        raise ValueError('Number of states represented in population array (', population_array.shape[1], ') does not match the number of states in specification (', len(model_specification.state_mapping), ')')
+        raise ValueError('Number of states represented in population array (', population_array.shape[1],
+                         ') does not match the number of states in specification (',
+                         len(model_specification.state_mapping), ')')
 
     discount_rate = model_specification.discount_rate
     cycle_length = model_specification.cycle_length
@@ -391,23 +410,24 @@ def calculate_costs(population_array, model_specification: ModelSpec, mode='unco
         state_index = state_mapping[t[1]]
         c_type = t[2]
         if c_type == 'beta':
-            for i in range(0,iteration_costs.shape[0]):
+            for i in range(0, iteration_costs.shape[0]):
                 iteration_costs[i, state_index] = get_beta(t[3], t[4])
         elif c_type == 'gamma':
-            for i in range(0,iteration_costs.shape[0]):
+            for i in range(0, iteration_costs.shape[0]):
                 iteration_costs[i, state_index] = get_gamma(t[3], t[4])
         elif c_type == 'static':
             iteration_costs[:, state_index] = t[3]
         elif c_type == 'copy':
-            copy_costs[state_index] = [state_mapping[t[3]]] # cost for index (noted as copy) points to index of target
-            iteration_costs[:, state_index] = np.nan # initialize as nan
+            copy_costs[state_index] = [state_mapping[t[3]]]  # cost for index (noted as copy) points to index of target
+            iteration_costs[:, state_index] = np.nan  # initialize as nan
         else:
             raise ValueError('Error: Bad cost type specification', c_type)
 
     # Fill copied costs
     for c in copy_costs:
         iteration_costs[:, c] = iteration_costs[:, copy_costs[c]].reshape(iteration_costs.shape[0])
-    if np.isnan(iteration_costs).any(): #TODO: Could make this output something more detailed. I.e. index of error cost
+    if np.isnan(
+            iteration_costs).any():  # TODO: Could make this output something more detailed. I.e. index of error cost
         raise ValueError('Error: NaN cost specified. Likely a copy type error. Please check costs sheet')
 
     # Apply sampled costs to population array
@@ -418,28 +438,28 @@ def calculate_costs(population_array, model_specification: ModelSpec, mode='unco
 
         results_costs = np.zeros(population_array_trap.shape)
         for state in state_mapping:
-            idx = state_mapping[state]  
-            results_costs[:,idx,:] = population_array_trap[:,idx,:] * iteration_costs[:,idx][:,np.newaxis]
+            idx = state_mapping[state]
+            results_costs[:, idx, :] = population_array_trap[:, idx, :] * iteration_costs[:, idx][:, np.newaxis]
 
         # Apply discount rate with an extra half-cycle tacked on (is the half cycle needed?)
         # cost * (1 / ((1+discount_rate)**year))
-        for i in range(0,results_costs.shape[2]):
-            year = math.floor(((i*cycle_length)+(cycle_length/2))/365)
-            results_costs[:,:,i] = results_costs[:,:,i] * (1 / ((1+discount_rate)**year))
+        for i in range(0, results_costs.shape[2]):
+            year = math.floor(((i * cycle_length) + (cycle_length / 2)) / 365)
+            results_costs[:, :, i] = results_costs[:, :, i] * (1 / ((1 + discount_rate) ** year))
 
         return results_costs
     else:
         results_costs = np.zeros(population_array.shape)
 
         for state in state_mapping:
-            idx = state_mapping[state]  
-            results_costs[:,idx,:] = population_array[:,idx,:] * iteration_costs[:,idx][:,np.newaxis]
-                
+            idx = state_mapping[state]
+            results_costs[:, idx, :] = population_array[:, idx, :] * iteration_costs[:, idx][:, np.newaxis]
+
         # Apply discount rate
         # cost * (1 / ((1+discount_rate)**year))
-        for i in range(0,results_costs.shape[2]):
-            year = math.floor((i*cycle_length)/365)
-            results_costs[:,:,i] = results_costs[:,:,i] * (1 / ((1+discount_rate)**year))
+        for i in range(0, results_costs.shape[2]):
+            year = math.floor((i * cycle_length) / 365)
+            results_costs[:, :, i] = results_costs[:, :, i] * (1 / ((1 + discount_rate) ** year))
 
         return results_costs
 
@@ -454,7 +474,7 @@ def calculate_utilities(population_array, model_specification: ModelSpec, mode='
             model_specification = instance of the ModelSpec object with a loaded specification
             mode = the method in which to calculate the utility output. default is uncorrected.
                    "trapezoid" can be specified to use the trapezoid method for half-cycle corrections
-    Output: results_utilities = [num_iterations x num_states x num_cycles] representing the utility at each state, 
+    Output: results_utilities = [num_iterations x num_states x num_cycles] representing the utility at each state,
                                 in each cycle, relative to the popoulation in a given state.
             *Note: if mode='trapezoid' the output result_cost will have a shape of [num_iterations x num_states x num_cycles-1]
                    this is because of the way it is calculated.
@@ -462,7 +482,9 @@ def calculate_utilities(population_array, model_specification: ModelSpec, mode='
     if isinstance(model_specification, ModelSpec) == False:
         raise TypeError('Error: Expected input model_specification to be of type markov_modeling.ModelSpec')
     if len(model_specification.state_mapping) != population_array.shape[1]:
-        raise ValueError('Number of states represented in population array (', population_array.shape[1], ') does not match the number of states in specification (', len(model_specification.state_mapping), ')')
+        raise ValueError('Number of states represented in population array (', population_array.shape[1],
+                         ') does not match the number of states in specification (',
+                         len(model_specification.state_mapping), ')')
 
     discount_rate = model_specification.discount_rate
     cycle_length = model_specification.cycle_length
@@ -475,29 +497,30 @@ def calculate_utilities(population_array, model_specification: ModelSpec, mode='
         state_index = state_mapping[t[1]]
         u_type = t[2]
         if u_type == 'beta':
-            for i in range(0,iteration_utils.shape[0]):
+            for i in range(0, iteration_utils.shape[0]):
                 iteration_utils[i, state_index] = get_beta(t[3], t[4])
         elif u_type == 'beta_disutility':
-            for i in range(0,iteration_utils.shape[0]):
-                iteration_utils[i, state_index] = 1-get_beta(t[3], t[4])
+            for i in range(0, iteration_utils.shape[0]):
+                iteration_utils[i, state_index] = 1 - get_beta(t[3], t[4])
         elif u_type == 'gamma':
-            for i in range(0,iteration_utils.shape[0]):
+            for i in range(0, iteration_utils.shape[0]):
                 iteration_utils[i, state_index] = get_gamma(t[3], t[4])
         elif u_type == 'gamma_disutility':
-            for i in range(0,iteration_utils.shape[0]):
-                iteration_utils[i, state_index] = 1-get_gamma(t[3], t[4])
+            for i in range(0, iteration_utils.shape[0]):
+                iteration_utils[i, state_index] = 1 - get_gamma(t[3], t[4])
         elif u_type == 'static':
             iteration_utils[:, state_index] = t[3]
         elif u_type == 'copy':
-            copy_utils[state_index] = [state_mapping[t[3]]] # cost for index (noted as copy) points to index of target
-            iteration_utils[:, state_index] = np.nan # initialize as nan
+            copy_utils[state_index] = [state_mapping[t[3]]]  # cost for index (noted as copy) points to index of target
+            iteration_utils[:, state_index] = np.nan  # initialize as nan
         else:
             raise ValueError('Error: Bad utility type specification', u_type)
-    
+
     # Fill copied utilities
     for u in copy_utils:
         iteration_utils[:, u] = iteration_utils[:, copy_utils[u]].reshape(iteration_utils.shape[0])
-    if np.isnan(iteration_utils).any(): #TODO: Could make this output something more detailed. I.e. index of error utility
+    if np.isnan(
+            iteration_utils).any():  # TODO: Could make this output something more detailed. I.e. index of error utility
         raise ValueError('Error: NaN utility specified. Likely a copy type error. Please check utility sheet')
 
     # Apply sampled utilities to population array.
@@ -509,41 +532,41 @@ def calculate_utilities(population_array, model_specification: ModelSpec, mode='
         results_utilities = np.zeros(population_array_trap.shape)
         for state in state_mapping:
             idx = state_mapping[state]
-            results_utilities[:,idx,:] = population_array_trap[:,idx,:] * iteration_utils[:,idx][:,np.newaxis]
+            results_utilities[:, idx, :] = population_array_trap[:, idx, :] * iteration_utils[:, idx][:, np.newaxis]
 
         # Apply discount rate with an extra half-cycle tacked on (is the half cycle needed?)
         # cost * (1 / ((1+discount_rate)**year))
-        for i in range(0,results_utilities.shape[2]):
-            year = math.floor(((i*cycle_length)+(cycle_length/2))/365)
-            results_utilities[:,:,i] = results_utilities[:,:,i] * (1 / ((1+discount_rate)**year))
+        for i in range(0, results_utilities.shape[2]):
+            year = math.floor(((i * cycle_length) + (cycle_length / 2)) / 365)
+            results_utilities[:, :, i] = results_utilities[:, :, i] * (1 / ((1 + discount_rate) ** year))
 
         # Adjust utilities to per-year
-        results_utilities = results_utilities * (cycle_length/365)
-        
+        results_utilities = results_utilities * (cycle_length / 365)
+
         return results_utilities
     else:
         results_utilities = np.zeros(population_array.shape)
 
         for state in state_mapping:
             idx = state_mapping[state]
-            results_utilities[:,idx,:] = population_array[:,idx,:] * iteration_utils[:,idx][:,np.newaxis]
+            results_utilities[:, idx, :] = population_array[:, idx, :] * iteration_utils[:, idx][:, np.newaxis]
 
         # Apply discount rate
         # cost * (1 / ((1+discount_rate)**year))
-        for i in range(0,results_utilities.shape[2]):
-            year = math.floor((i*cycle_length)/365)
-            results_utilities[:,:,i] = results_utilities[:,:,i] * (1 / ((1+discount_rate)**year))
+        for i in range(0, results_utilities.shape[2]):
+            year = math.floor((i * cycle_length) / 365)
+            results_utilities[:, :, i] = results_utilities[:, :, i] * (1 / ((1 + discount_rate) ** year))
 
         # Adjust utilities to per-year
-        results_utilities = results_utilities * (cycle_length/365)
-        
+        results_utilities = results_utilities * (cycle_length / 365)
+
         return results_utilities
 
 
 def calculate_icer(base: ModelData, treat: ModelData, calculate_ci=False):
     '''
     Convenience function to calculate an ICER and optional CI using bias-corrected and accelerated
-    method. 
+    method.
 
     Inputs: base = ModelData object containing the data outputs (population, costs, utils) from the base case arm
             treat = ModelData object containing the data outputs from the treatment (comparator) arm
@@ -556,16 +579,16 @@ def calculate_icer(base: ModelData, treat: ModelData, calculate_ci=False):
         raise TypeError('Error: Expected inputs base and treat to be of type markov_modeling.ModelData')
 
     # Calculate delta utility and delta cost between the iterations of the treatment and base case arms
-    delta_mean_utility = treat.iteration_util_data.mean() - base.iteration_util_data.mean() #Average util of treat - average util of basecase
-    delta_mean_cost = treat.iteration_cost_data.mean() - base.iteration_cost_data.mean() #Average cost of treat - average cost of basecase
+    delta_mean_utility = treat.iteration_util_data.mean() - base.iteration_util_data.mean()  # Average util of treat - average util of basecase
+    delta_mean_cost = treat.iteration_cost_data.mean() - base.iteration_cost_data.mean()  # Average cost of treat - average cost of basecase
 
-    ICER = delta_mean_cost/delta_mean_utility
+    ICER = delta_mean_cost / delta_mean_utility
 
     if calculate_ci == True:
         results_data = pd.DataFrame({'cost_treat': treat.iteration_cost_data,
-                                    'cost_base': base.iteration_cost_data,
-                                    'utility_treat': treat.iteration_util_data,
-                                    'utility_base': base.iteration_util_data})
+                                     'cost_base': base.iteration_cost_data,
+                                     'utility_treat': treat.iteration_util_data,
+                                     'utility_base': base.iteration_util_data})
 
         def func_icer(x):
             '''
@@ -573,16 +596,75 @@ def calculate_icer(base: ModelData, treat: ModelData, calculate_ci=False):
             Input: x = rows of results_dataframe that were indexed from the bootstrap sample
                     has 4 columns for cost_treat, cost_base, utility_treat, utility_base
             Output: ICER calculated from the iterations present in x
-            
+
                     mean(cost_treat) - mean(cost_base)
             ICER = ----------------------------------------
                 mean(utility_treat) - mean(utility_base)
             '''
-            return (x['cost_treat'].mean() - x['cost_base'].mean()) / (x['utility_treat'].mean() - x['utility_base'].mean())
+            return (x['cost_treat'].mean() - x['cost_base'].mean()) / (
+                        x['utility_treat'].mean() - x['utility_base'].mean())
 
-        bs = IIDBootstrap(results_data) #use a "dummy" of array indicies to sample from. Needed to correctly calculate ICER of the average
-        ci = bs.conf_int(func_icer, 1000, method='bca') #bias-corrected and accelerated method
+        bs = IIDBootstrap(
+            results_data)  # use a "dummy" of array indicies to sample from. Needed to correctly calculate ICER of the average
+        ci = bs.conf_int(func_icer, 1000, method='bca')  # bias-corrected and accelerated method
 
         return ICER, ci
 
     return ICER
+
+
+def ce_quadrant_count(c_data, u_data, ce_threshold):
+    '''
+    Helper function to count number of points in each quadrant of a CE plane
+
+    Inputs: c = [n, ] shaped numpy array of cost deltas comparing two model arms (n = number of model iterations)
+            u = [n, ] shaped numpy array of utility deltas comparing two model arms (n = number of model iterations)
+            ce_threhsold = number representing the lambda
+
+    Outputs: None. Prints outputs to console
+    '''
+    NW = 0
+    NE = 0
+    SW = 0
+    SE = 0
+    count_under_threshold = 0
+    count_under_threshold2 = 0
+    num_iterations = c_data.shape[0]
+    for i in range(0, num_iterations):
+        if c_data[i] > 0:  # North
+            if u_data[i] > 0:  # East
+                NE += 1
+                y = u_data[i] * ce_threshold  # maximum acceptatble cost at a given value of utility
+                if c_data[i] < y:
+                    count_under_threshold += 1
+            else:  # West
+                NW += 1
+        else:  # South
+            if u_data[i] > 0:  # East
+                SE += 1
+            else:  # West
+                SW += 1
+                y = u_data[i] * ce_threshold  # maximum acceptatble cost at a given value of utility
+                if c_data[i] < y:
+                    count_under_threshold2 += 1
+
+    all_quads = NW + NE + SW + SE
+    print('Total number of model iterations:', all_quads, '|| Lambda threshold:', ce_threshold)
+    print()
+    print('North-West:', NW, '(', round(NW / all_quads, 2), '%)')
+    print('North-East:', NE, '(', round(NE / all_quads, 2), '%)',
+          '| Under-threshold:', count_under_threshold,
+          '(', round(count_under_threshold / all_quads, 2), '%)',
+          '| Over-threshold:', NE - count_under_threshold,
+          '(', round((NE - count_under_threshold) / all_quads, 2), '%)')
+    print('South-West:', SW, '(', round(SW / all_quads, 2), '%)',
+          '| Under-threshold:', count_under_threshold2,
+          '(', round(count_under_threshold2 / all_quads, 2), '%)',
+          '| Over-threshold:', SW - count_under_threshold2,
+          '(', round((SW - count_under_threshold2) / all_quads, 2), '%)')
+    print('South-East:', SE, '(', round(SE / all_quads, 2), '%)')
+    print()
+    print("Points below lambda:", SE + count_under_threshold + count_under_threshold2, "(",
+          round((SE + count_under_threshold + count_under_threshold2) / all_quads, 2), ")")
+
+    return
