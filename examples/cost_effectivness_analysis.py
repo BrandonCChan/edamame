@@ -3,7 +3,7 @@
 # the framework. Mirrors code detailed in "Cost-Effectivness Analysis.ipynb"
 # Please see the jupyter notebook for additional code on calculating other output metrics
 #
-# Brandon Chan | November 2021
+# Brandon Chan | June 2022
 #---------------------------------------------------------------------------------------------------
 # Import Packages
 #---------------------------------------------------------------------------------------------------
@@ -18,18 +18,19 @@ import sys
 sys.path.insert(0,"../src") # Direct to the src directory depending on where you're developing from
 from markov_modeling import *
 
-# Optional: specify random seed
-np.random.seed(123)
-
 #---------------------------------------------------------------------------------------------------
 # Load base and treatment arm specifications, run model, and calculate cost and utility outputs
 #---------------------------------------------------------------------------------------------------
+# Optional: specify random seed
+np.random.seed(123)
 specification_base = ModelSpec('../model_specifications/test_parameters_base.xlsx', 
                                model_name='test_base')
 pop_base = run_model(specification_base)
 cost_base = calculate_costs(pop_base, specification_base)
 util_base = calculate_utilities(pop_base, specification_base)
 
+# Optional: specify random seed
+np.random.seed(123)
 specification_treat = ModelSpec('../model_specifications/test_parameters_treat.xlsx',
                                 model_name='test_treat')
 pop_treat = run_model(specification_treat)
@@ -164,30 +165,5 @@ plt.show()
 # Quadrant counting
 # Uses same lambda threshold as detailed in prior step: variable "ce_threshold"
 #----------------------------
-NW = 0
-NE = 0
-SW = 0
-SE = 0
-count_under_threshold = 0
-num_iterations = c.shape[0]
-for i in range(0, num_iterations):
-    if c[i] > 0: # North
-        if u[i] > 0: # East
-            NE += 1
-            y = u[i] * ce_threshold # maximum acceptatble cost at a given value of utility 
-            if c[i] < y:
-                count_under_threshold += 1
-        else: # West
-            NW += 1
-    else: #South
-        if u[i] > 0: # East
-            SE += 1
-        else: # West
-            SW += 1
-print()
-print('Number of points in each quadrant of CE plane:')
-print('North-West:', NW)
-print('North-East:', NE, '| Under-threhsold:', count_under_threshold, '| Over-threshold:', NE-count_under_threshold)
-print('South-West:', SW)
-print('South-East:', SE)
-print(NW+NE+SW+SE)
+ce_threshold = 100000
+ce_quadrant_count(c, u, ce_threshold)
