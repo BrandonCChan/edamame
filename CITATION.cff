@@ -4,8 +4,8 @@ authors:
 - family-names: "Chan"
   given-names: "Brandon"
   orcid: "https://orcid.org/0000-0003-1923-0052"
-title: "monte_carlo_markov"
+title: "edamame"
 version: 1.0.0
 doi: 10.5281/zenodo.1234
-date-released: 2022-06-27
-url: "https://github.com/BrandonCChan/monte_carlo_markov"
+date-released: 2022-06-28
+url: "https://github.com/BrandonCChan/edamame"
