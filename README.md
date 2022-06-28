@@ -1,80 +1,35 @@
-# edamame
+[![edamame](https://github.com/BrandonCChan/edamame/blob/master/img/edamame.png)](https://github.com/BrandonCChan/edamame)
+
+
 Economic Decision Analytic MArkov Model Evaluation (EDAMAME)
-For decision analytic modeling and cost-effectiveness analysis in Python. Allows users to flexibly define model schematics and parameters in excel workbooks before utilizing python packages to load, run, and generate model outputs.
 
-## Requirements (tested with):
-See requirements.txt
+A framework and tools for decision analytic modeling and cost-effectiveness analysis written in Python. Mainly intended for use in the field of health economics to conduct economic evaluations using mote-carlo markov model simulations. Allows users to flexibly define model schematics and parameters in excel workbooks before utilizing edamame code to load, run, and generate model outputs.
 
-## 1) Model specification
-Specification of model in an excel file (examples in /model_specifications):
-The excel workbook contains 4 sheets: 
-#### 1) transitions 
-    Rows: each row represents a distinct transition between states in the described model
-          the properties of the transtion are denoted by the following columns
-    Columns: start_state :: the origin state (ie. the A in an A->B transition)
-             end_state :: the destination state (ie. the B in an A->B transition)
-             type :: specifies the 'type' of transition. Used by the code to handle 
-                     the following parameter values when drawing a transtion probability
-                     valid entries: time_dependent_weibull, time_dependent_gompertz, 
-                                    probabilistic_time_dependent_weibull, probabilistic_time_dependent_gompertz,
-                                    beta, gamma, residual, constant
+## Requirements:
+See requirements.txt for more details
 
-                     time_dependent_weibull | Based on using a weibull distribution. 
-                                              Additional params (ie. time) are provided at runtime.
-                                              - parameter_1 denotes the regression constant 'const'
-                                              - parameter_2 denotes the ancillary parameter 'p'
-                     time_dependent_gompertz | Based on using a gompertz distribution. 
-                                               Additional params (ie. time) are provided at runtime.
-                                               - parameter_1 denotes the regression constant 'const'
-                                               - parameter_2 denotes the ancillary parameter 'gamma'
-                     probabilistic_time_dependent_weibull | Based on using a weibull distribution. 
-                                                            Additional params (ie. time) are provided at runtime.
-                                                            - parameter_1 denotes the regression constant 'const'
-                                                            - parameter_2 denotes the ancillary parameter 'p'
-                                                            - parameter_3 denotes the standard error of 'const'
-                                                            - parameter_4 denotes the standard error of 'p'
-                     probabilistic_time_dependent_gompertz | Based on using a gompertz distribution.
-                                                             Additional params (ie. time) are provided at runtime.
-                                                             - parameter_1 denotes the regression constant 'const'
-                                                             - parameter_2 denotes the ancillary parameter 'p'
-                                                             - parameter_3 denotes the standard error of 'const'
-                                                             - parameter_4 denotes the standard error of 'p'
-                     beta | parameter_1 denotes number of observed "sucesses", while paramter_2 denotes number of "non-sucesses"
-                     gamma | parameter_1 denotes mean, while parameter_2 denotes variance 
-                     residual | paramter_1 and parameter_2 hold no meaning, the transition is inputed
-                                as the residual
-                     constant | parameter_1 denotes a 'locked' transition probability
-                     
-             parameter_1 :: meaning depends on the specified type (described above)
-             parameter_2 :: meaning depends on the specified type (described above)
-             parameter_3 :: meaning depends on the specified type (described above)
-             parameter_4 :: meaning depends on the specified type (described above)
-             notes :: space for additional descriptions you may want to add           
-#### 2) costs 
-    Rows: Each row represents the cost associated with each state
-    Columns: state :: name of the state with associated cost
-             type :: method to apply costs. Options include 'static', 'beta' and 'gamma'.
-                     beta and gamma utilize the variance and cost (mean) to sample a cost for a given state and iteration
-             cost :: cost of being in the corresponding state (assume pre-adjusted to some year)
-             cost_variance :: variance of the cost
-             notes :: space for additional descriptions you may want to add
-#### 3) utilities
-    Rows: Each row represents the utility associated with each state
-    Columns: state :: name of the state with associated cost
-             type :: method to apply utilities. Options include 'static', 'beta' and 'gamma'.
-                     beta and gamma utilize the variance and cost (mean) to sample a utility for a given state and iteration
-             utility :: cost of being in the corresponding state (assume pre-adjusted to some year)
-             utility_variance :: variance of the cost
-             notes :: space for additional descriptions you may want to add
-#### 4) specification
-    Rows: max_iterations :: number of iterations to run
-          time_horizon :: maximum amount of time to model (in years)
-          cycle_length :: "step size"/length of time of each cycle (days)
-          discount_rate :: discount rate to be applied to costs and utilities 
-          name_start_state :: which state to initialize the population in (ie. allocate all to initial state)
+Reflects development environment but is possible that older and newer versions of packages may still work.
 
-## 2) Running a model and anlaysis
-See Cost-Effectivness Analysis.ipynb in the /notebooks folder for an end-to-end example 
+## Running a cost-effectivness analysis
+See [Cost-Effectivness Analysis.ipynb](https://github.com/BrandonCChan/edamame/blob/master/notebooks/Cost-Effectiveness%20Analysis.ipynb) for an end-to-end example with annotations and explainations!
 
-## 3) Running checks
-Model Diagnostics.ipynb contains two means of qualitativley checking models. First is the ability to visualize the model specified in an excel file as a graph. Second is to track and visualize the movement of the "population" throughout each model cycle.
+Alternativley, [cost_effectivness_analysis.py](https://github.com/BrandonCChan/edamame/blob/master/examples/cost_effectivness_analysis.py) provides a script version of most of the code within the example jupyter notebook.
+
+## Defining and specifying a model
+The structure (i.e. states and transitions), associated state costs, associated state utilties, and simulation paramters (i.e. number of iterations, time-horizon) of a model are defined as a formatted excel document. Each model arm (comparator) is defined by it's own excel workbook. Templates of a simple 3 state model are provided in [here](https://github.com/BrandonCChan/edamame/tree/master/model_specifications).
+
+See the [wiki page](https://github.com/BrandonCChan/edamame/wiki/Model-Specification) for more details.
+
+## Other resources and examples
+
+### Model disgnostics and debugging
+[Model Diagnostics.ipynb](https://github.com/BrandonCChan/edamame/blob/master/notebooks/Model%20Diagnostics.ipynb) contains two means of qualitativley checking models. First is the ability to visualize the model specified in an excel file as a graph. Second is to track and visualize the movement of the "population" throughout each model cycle.
+
+### Univariate sensitivity analysis
+[Univariate Sensitivity Analysis.ipynb](https://github.com/BrandonCChan/edamame/blob/master/notebooks/Univariate%20Sensitivity%20Analysis.ipynb) provides an example of conducting two types of univariate sensitivity analysis using previously saved model outputs. 1) Is the adjustment of the cost of a state; 2) Is the adjustment of a transition probability.
+
+### Example of time-varying transition probabilities
+[Testing with two-state model](https://github.com/BrandonCChan/edamame/blob/master/notebooks/Testing%20with%20two-state%20model.ipynb) demonstrates the use of time-varying transition probabilities (i.e. a weibull) with a simple 2-state model. This example is useful in testing model behavior and validating the parameterization of a survivial regression you may have run with external data. 
+
+## Documentation
+See the relevant [wiki pages](https://github.com/BrandonCChan/edamame/wiki/Technical-Documentation)
